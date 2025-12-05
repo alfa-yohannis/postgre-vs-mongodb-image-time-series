@@ -42,18 +42,47 @@ def load_single_value_from_summary(path, column_name):
 
 
 # =========================
+# AXIS + BOXPLOT STYLE
+# =========================
+
+def style_boxplot(ax):
+    # Horizontal grid only
+    ax.grid(True, axis="y")
+
+    # Show ONLY the x-axis line (bottom spine)
+    ax.spines["bottom"].set_visible(True)
+    ax.spines["left"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Improve label spacing
+    ax.tick_params(axis="x", pad=6)
+    ax.tick_params(axis="y", pad=6)
+
+
+# =========================
 # 1) BOX PLOT: INSERT THROUGHPUT
 # =========================
 
 pg_insert_tp = load_column_from_csv(POSTGRES_INSERT_RUNS, "rows_per_sec")
 mongo_insert_tp = load_column_from_csv(MONGO_INSERT_RUNS, "rows_per_sec")
 
-plt.figure()
-plt.boxplot([pg_insert_tp, mongo_insert_tp], labels=["PostgreSQL", "MongoDB"])
+plt.figure(figsize=(8, 4))
+plt.boxplot(
+    [pg_insert_tp, mongo_insert_tp],
+    tick_labels=["PostgreSQL", "MongoDB"],
+    widths=0.6,
+    showmeans=True,
+    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
+)
+
 plt.title("Insert Throughput (rows/sec)")
 plt.ylabel("Rows per second")
-plt.grid(True)
-plt.savefig("boxplot_insert_throughput.pdf", format="pdf")
+
+style_boxplot(plt.gca())
+
+plt.tight_layout(pad=0.4)
+plt.savefig("boxplot_insert_throughput.pdf", bbox_inches="tight", pad_inches=0.05)
 plt.close()
 
 
@@ -64,18 +93,27 @@ plt.close()
 pg_agg_lat = load_column_from_csv(POSTGRES_AGG_RUNS, "latency_ms")
 mongo_agg_lat = load_column_from_csv(MONGO_AGG_RUNS, "latency_ms")
 
-plt.figure()
-plt.boxplot([pg_agg_lat, mongo_agg_lat], labels=["PostgreSQL", "MongoDB"])
+plt.figure(figsize=(8, 4))
+plt.boxplot(
+    [pg_agg_lat, mongo_agg_lat],
+    tick_labels=["PostgreSQL", "MongoDB"],
+    widths=0.6,
+    showmeans=True,
+    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
+)
+
 plt.title("Aggregation Latency (ms)")
 plt.ylabel("Milliseconds")
-plt.grid(True)
-plt.savefig("boxplot_aggregation_latency.pdf", format="pdf")
+
+style_boxplot(plt.gca())
+
+plt.tight_layout(pad=0.4)
+plt.savefig("boxplot_aggregation_latency.pdf", bbox_inches="tight", pad_inches=0.05)
 plt.close()
 
 
 # =========================
-# 3) BOX PLOT: DRIVER OVERHEAD LATENCY
-# (summary-only values → single-point box)
+# 3) BOX PLOT: DRIVER ROUNDTRIP LATENCY
 # =========================
 
 pg_driver_lat = load_single_value_from_summary(
@@ -85,13 +123,22 @@ mongo_driver_lat = load_single_value_from_summary(
     MONGO_DRIVER_SUMMARY, "mean_latency_ms"
 )
 
-plt.figure()
-plt.boxplot([[pg_driver_lat], [mongo_driver_lat]],
-            labels=["PostgreSQL", "MongoDB"])
+plt.figure(figsize=(8, 4))
+plt.boxplot(
+    [[pg_driver_lat], [mongo_driver_lat]],
+    tick_labels=["PostgreSQL", "MongoDB"],
+    widths=0.6,
+    showmeans=True,
+    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
+)
+
 plt.title("Driver Roundtrip Latency (ms)")
 plt.ylabel("Milliseconds")
-plt.grid(True)
-plt.savefig("boxplot_driver_latency.pdf", format="pdf")
+
+style_boxplot(plt.gca())
+
+plt.tight_layout(pad=0.4)
+plt.savefig("boxplot_driver_latency.pdf", bbox_inches="tight", pad_inches=0.05)
 plt.close()
 
 
