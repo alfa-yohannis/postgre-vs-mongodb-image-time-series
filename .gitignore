@@ -324,3 +324,8 @@ TSWLatexianTemp*
 # option is specified. Footnotes are the stored in a file with suffix Notes.bib.
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
+code/__pycache__
+paper/icct_alfa_yohannis_2.pdf
+*.csv
+code/restored_frame_postgre.jpg
+code/restored_frame_mongo.jpg

@@ -11,7 +11,7 @@ from pymongo import MongoClient
 # CONFIGURATION
 # =========================
 
-MONGO_URI = "mongodb://localhost:27017"
+MONGO_URI = "mongodb://mongo:mongo@127.0.0.1:57017/?authSource=admin"
 ENGINE_NAME = "mongodb+pymongo-driver"
 
 # Benchmark parameters

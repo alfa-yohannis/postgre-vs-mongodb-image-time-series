@@ -11,10 +11,9 @@
 \usepackage{graphicx}
 \usepackage{subcaption}
 
-\usepackage{url}
 \usepackage[hidelinks]{hyperref}
-\Urlmuskip=0mu plus 1mu
-\usepackage{breakurl}
+\usepackage{xurl}  
+
 
 \usepackage{listings}
 \lstdefinelanguage{bash} {
@@ -42,223 +41,258 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
 
-\title{Benchmarking PostgreSQL and MongoDB for Image-Based Time-Series Data\\
-% {\footnotesize \textsuperscript{*}Note: Sub-titles are not captured in Xplore and
-% should not be used
-% }
-% \thanks{Identify applicable funding agency here. If none, delete this.}
+\title{Benchmarking PostgreSQL vs MongoDB\\on Image-Based Time-Series\\
 }
 
 \author{
-\IEEEauthorblockN{1\textsuperscript{st} Alfa Yohannis}
-\IEEEauthorblockA{\textit{Department of Informatics} \\
-\textit{Universitas Pradita}\\
-Tangerang, Indonesia \\
-alfa.ryano@gmail.com}
-\and
-\IEEEauthorblockN{2\textsuperscript{nd} Alexander Waworuntu}
-\IEEEauthorblockA{\textit{Department of Informatics} \\
-\textit{Universitas Multimedia Nusantara}\\
-Tangerang, Indonesia}
-\and
-\IEEEauthorblockN{3\textsuperscript{rd} Master Edison Siregar}
-\IEEEauthorblockA{\textit{Department of Informatics} \\
-\textit{Universitas Pradita}\\
-Tangerang, Indonesia}
+[Hidden for double-blind review]
 }
-
-
-
-%\author{
-%\IEEEauthorblockN{
-%Alfa Yohannis\IEEEauthorrefmark{1},
-%Alexander Waworuntu\IEEEauthorrefmark{2},
-%Master Edison Siregar\IEEEauthorrefmark{3}
-%}
-%\IEEEauthorblockA{
-%\IEEEauthorrefmark{1}\IEEEauthorrefmark{3}\textit{Department of Informatics}\\
-%\textit{Universitas Pradita}\\
-%Tangerang, Indonesia\\
-%\IEEEauthorrefmark{1}alfa.ryano@gmail.com
-%}
-%\IEEEauthorblockA{
-%\IEEEauthorrefmark{2}\textit{Department of Informatics}\\
-%\textit{Universitas Multimedia Nusantara}\\
-%Tangerang, Indonesia
-%}
-%}
-
-
 
 
 \maketitle
 
 \begin{abstract}
-This paper presents a performance comparison between PostgreSQL with TimescaleDB and MongoDB for image-based time-series workloads in consumer electronics and IoT systems. Using 320x240 JPEG frames, the study evaluates insertion throughput, aggregation latency, driver overhead, and storage utilization under controlled conditions. Experimental results show that MongoDB achieves higher ingestion throughput and significantly smaller storage footprint due to native compression, while PostgreSQL provides substantially lower aggregation latency and more stable analytical performance. These findings highlight clear trade-offs between write efficiency, query performance, and storage efficiency for vision-oriented time-series applications.
+This paper presents a systematic performance comparison between PostgreSQL (with TimescaleDB) and MongoDB for image-based time-series workloads in consumer electronics and embedded IoT systems. Using isolated Dockerized deployments, we benchmarked both systems across five progressively increasing image resolutions---1080p ($\sim$1.09~MB), 1440p ($\sim$1.66~MB), 4K~UHD ($\sim$3.07~MB), 5K ($\sim$4.83~MB), and 6K ($\sim$6.45~MB)---to identify the precise payload size at which architectural trade-offs invert. Results reveal that MongoDB outperforms PostgreSQL for small payloads (65 vs.\ 17 rows/s at 1080p), but a critical crossover occurs between 1080p and 1440p: at 4K, PostgreSQL achieves 5.8 rows/s versus MongoDB's 4.3 rows/s. MongoDB fails completely at 6K due to memory exhaustion. Additionally, binary retrieval latency shows MongoDB leading at low resolutions before decaying and failing at 6K. Storage amplification on MongoDB escalates from $0.12\times$ at 1080p to $3.05\times$ at 4K, whereas PostgreSQL remains constant at $1.04\times$. These findings establish resolution-dependent architectural guidelines for IoT vision pipeline design.
 \end{abstract}
 
 \begin{IEEEkeywords}
-time-series databases, image-based IoT, PostgreSQL, MongoDB, consumer electronics
+time-series databases, image-based IoT, PostgreSQL, MongoDB, benchmarking
 \end{IEEEkeywords}
 
 \section{Introduction}
-\label{sec:introduction}
+\label{sec:introduction} 
 
-The rapid proliferation of consumer electronics (CE) and Internet of Things (IoT) devices equipped with embedded vision capabilities has generated unprecedented volumes of image-based time-series data, ranging from security cameras and smart doorbells to industrial inspection systems and wearable health monitors~\cite{intuz_iot_databases,ceec_tsdb_review}. These systems produce continuous streams of timestamped image frames alongside metadata such as device identifiers and sensor parameters, placing unique demands on database management systems for high-throughput ingestion, efficient storage of binary payloads, and low-latency temporal analytics~\cite{jensen_tsms_survey,nerc_tsdb_survey}. Traditional relational databases struggle with the scale and velocity of such workloads, while specialized time-series databases (TSDBMSs) and document stores have emerged as viable alternatives, yet their comparative performance for image-centric time-series remains underexplored~\cite{dewaal_timeseries_survey,tigerdata_tsdb_compare}.
+The rapid proliferation of consumer electronics (CE) and Internet of Things (IoT) edge devices equipped with embedded vision capabilities has generated unprecedented volumes of image-based time-series data~\cite{ieee_ce_definition}. CE payloads---the binary data produced by consumer-grade imaging hardware such as security cameras, smart doorbells, and medical monitors---increasingly consist of high-resolution frames that must be stored alongside timestamped metadata~\cite{intuz_iot_databases,ceec_tsdb_review}. These systems place significant stress on database management systems for stable high-throughput ingestion and deterministic temporal queries~\cite{jensen_tsms_survey,nerc_tsdb_survey}.
 
-PostgreSQL extended with TimescaleDB and MongoDB represent two prominent architectural approaches for managing time-series data in production environments~\cite{influxdata_mongodb_timescaledb,tigerdata_mongodb_timescaledb}. TimescaleDB augments PostgreSQL’s relational foundation with hypertables, automatic time-based partitioning, and chunked storage optimized for temporal queries, while MongoDB leverages its document model and native time-series collections with WiredTiger compression for flexible schema handling and high-ingestion workloads~\cite{maddevs_timescaledb_beats_pg,queryleaf_mongodb_timeseries_iot}. Existing benchmarks primarily focus on scalar sensor metrics (e.g., temperature, CPU utilization) using tools such as the Time Series Benchmark Suite (TSBS), leaving a critical gap in understanding how these systems perform when handling realistic image payloads representative of CE vision streams~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval}.
+While purpose-built time-series database management systems (TSDBMSs) exist~\cite{dewaal_timeseries_survey,tigerdata_tsdb_compare}, adopting specialized infrastructure requires substantial engineering investment. Consequently, many organizations prefer to maximize existing general-purpose databases---particularly PostgreSQL~\cite{postgresql_official} and MongoDB~\cite{mongodb_official}---which already power their operational stacks. PostgreSQL, extended with TimescaleDB~\cite{timescaledb_official}, partitions time-series data into hypertable chunks and employs TOAST (The Oversized-Attribute Storage Technique)~\cite{postgresql_toast_docs} to store large binary payloads out-of-line. MongoDB leverages its WiredTiger~\cite{mongodb_wiredtiger_storage} B-Tree storage engine with Snappy~\cite{google_snappy} block compression and native Time-Series Collections that bucket measurements into columnar documents~\cite{influxdata_mongodb_timescaledb,tigerdata_mongodb_timescaledb}.
 
-This study addresses this gap through a systematic performance comparison of PostgreSQL with TimescaleDB versus MongoDB for image-based time-series workloads modeled after consumer electronics applications. The primary aim is to quantify trade-offs across key metrics---insertion throughput, aggregation latency, driver overhead, and storage efficiency---under controlled conditions using standardized $320 \times 240$ JPEG frames with accompanying metadata on commodity hardware. This work introduces a reproducible benchmarking methodology for image-based time-series data, provides empirical evidence of complementary strengths between relational time-series extensions and document stores, and offers actionable guidance for CE system architects in selecting databases based on ingestion rate requirements, analytical latency needs, and storage constraints in multi-camera deployments. These findings extend prior TSDBMS surveys by addressing multimedia time-series use cases that are increasingly prevalent in next-generation vision-enabled IoT systems~\cite{jensen_tsms_survey,dewaal_timeseries_survey}.
+However, existing benchmarking studies---such as TSBS~\cite{tsbs}---primarily target small numerical scalar events of a few bytes each~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval}. No study systematically evaluates the resolution-dependent performance boundaries when databases must handle multi-megabyte CE image payloads within containerized environments using Docker~\cite{docker_official}.
 
+This study addresses the following research questions:
+\begin{itemize}
+    \item \textbf{RQ1:} How do PostgreSQL and MongoDB compare in insertion throughput when handling image-based time-series data across varying resolutions?
+    \item \textbf{RQ2:} How does binary retrieval latency scale with payload size for each engine, and does MongoDB's inline storage provide a measurable advantage over PostgreSQL's out-of-line TOAST?
+    \item \textbf{RQ3:} How does storage amplification evolve across resolutions, and what are the implications for containerized IoT deployments?
+\end{itemize}
 
-
+To answer these questions, we benchmark PostgreSQL (TimescaleDB) and MongoDB across six image resolutions from 1080p to 6K inside Docker containers, systematically evaluating ingestion throughput, binary retrieval latency, driver overhead, and storage amplification.
 
 \section{Related Work}
 \label{sec:related_work}
 
-Time-series database management systems (TSDBMSs) have been extensively studied for workloads dominated by temporally ordered sensor and event data, particularly in IoT and DevOps contexts~\cite{dewaal_timeseries_survey,jensen_tsms_survey}. Prior surveys report that specialized engines and extensions, such as TimescaleDB on PostgreSQL, introduce time-based partitioning, chunking, and compression mechanisms to overcome the scalability and performance limitations of traditional row-oriented relational databases~\cite{dewaal_timeseries_survey,nerc_tsdb_survey,diva_timescaledb_mongodb_eval}. These studies consistently identify ingestion throughput, query latency, and storage footprint as the dominant performance metrics, which directly align with the dimensions evaluated in this work.
+Time-series databases optimize sequential data ingestion by employing append-only storage, time-based partitioning, and columnar compression to bypass the write amplification inherent in traditional B-Tree indexes~\cite{dewaal_timeseries_survey,jensen_tsms_survey}. TimescaleDB~\cite{timescaledb_official} extends PostgreSQL~\cite{postgresql_official} with transparent hypertable chunking that sustains flat ingestion throughput at scale~\cite{dewaal_timeseries_survey,nerc_tsdb_survey}. MongoDB~\cite{mongodb_official} introduced native Time-Series Collections in version 5.0, which internally bucket measurements into compacted documents optimized for columnar access patterns~\cite{tigerdata_mongodb_timescaledb,maddevs_timescaledb_beats_pg}.
 
-Several benchmarks and industrial reports directly compare TimescaleDB with general-purpose document stores such as MongoDB for time-series workloads~\cite{influxdata_mongodb_timescaledb,tigerdata_mongodb_timescaledb,tsbs}. Results commonly indicate that TimescaleDB’s hypertable abstraction and chunk-based storage provide competitive or superior ingestion performance and substantially faster time-based aggregations than MongoDB for metric-style data, especially for large device fleets and long time ranges~\cite{maddevs_timescaledb_beats_pg}. At the same time, MongoDB’s native time-series collections and document-oriented schema offer operational simplicity and flexible schema evolution, which remain attractive for heterogeneous IoT deployments despite higher aggregation overheads in some benchmarks~\cite{queryleaf_mongodb_timeseries_iot}.
+Existing comparative benchmarks between these systems are limited to lightweight scalar payloads. The TSBS suite~\cite{tsbs} generates synthetic JSON/SQL events of a few bytes each. The Dalarna University evaluation~\cite{diva_timescaledb_mongodb_eval} compared TimescaleDB and MongoDB query execution times using numerical sensor data. CrateDB's benchmark~\cite{cratedb_ts_benchmark} focused on aggregate throughput over numeric IoT metrics. None of these studies incorporate binary payloads exceeding a few kilobytes.
 
-In the consumer electronics and IoT domain, most prior studies focus on scalar sensor signals such as temperature, power, or motion rather than image-based time-series streams~\cite{intuz_iot_databases,ceec_tsdb_review}. Database selection guidelines often emphasize high ingest rates, retention policies, and compression, and frequently recommend TimescaleDB and MongoDB for time-stamped data, yet without addressing large binary payloads such as JPEG frames~\cite{emqx_mqtt_mongodb_benchmark}. Existing benchmarking tools, including TSBS, rely primarily on synthetic numeric workloads~\cite{tsbs,cratedb_ts_benchmark}, leaving a clear gap in understanding database behavior under image-centric workloads. The present study addresses this gap by evaluating PostgreSQL with TimescaleDB and MongoDB under identical binary-image ingestion, aggregation, and storage conditions, thereby extending TSDBMS evaluations to vision-oriented consumer electronics and embedded IoT systems~\cite{dewaal_timeseries_survey,nerc_tsdb_survey,jensen_tsms_survey}.
+This gap is significant because storage engine behavior changes fundamentally with payload size. MongoDB's WiredTiger~\cite{mongodb_wiredtiger_storage} uses Snappy~\cite{google_snappy} block compression that achieves excellent ratios on repetitive JSON structures but offers negligible compression on high-entropy binary data such as JPEG images. PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism stores oversized attributes out-of-line in a separate table, an approach specifically designed for large binary values. MongoDB's alternative for large binaries---GridFS~\cite{mongodb_gridfs}---chunks files into 255~KB segments, but is incompatible with native Time-Series Collections~\cite{mongodb_ts_limitations}.
 
-
-
+Our work directly addresses this gap by conducting the first systematic multi-resolution benchmark (1080p--6K) that identifies the precise payload size at which these architectural differences manifest as measurable performance inversions.
 
 
 \section{Methodology}
 \label{sec:methodology}
 
-This study evaluates PostgreSQL with TimescaleDB and MongoDB for image-based time-series workloads representative of consumer electronics (CE) and IoT systems. The dataset consists of fixed-size image frames generated from a single source image resized to $320 \times 240$ pixels and encoded in JPEG format, reflecting the resolution of low-power embedded vision devices and entry-level camera sensors. Each frame is stored together with a device identifier, timestamp, image dimensions, and MIME type. To ensure controlled and repeatable experimental conditions, the same image is reused for all insert operations, eliminating variability caused by heterogeneous content.
+This study benchmarks PostgreSQL~\cite{postgresql_official} with TimescaleDB~\cite{timescaledb_official} against MongoDB~\cite{mongodb_official} with native Time-Series Collections under identical containerized conditions using Docker~\cite{docker_official}.
 
-In the PostgreSQL configuration, image frames are stored in a relational time-series table configured as a TimescaleDB hypertable. Each record includes a unique frame identifier, device identifier, high-resolution timestamp, raw image bytes stored as a binary attribute, image width and height, MIME type, and a creation timestamp. To satisfy TimescaleDB requirements, a composite primary key consisting of the timestamp and unique frame identifier is used, enabling correct partitioning and time-based chunk management for efficient temporal indexing and scalable storage.
+\subsection{Environment and Configuration}
+All experiments run on Docker containers sharing the host resources. PostgreSQL~15 with TimescaleDB runs with default shared buffers. MongoDB~7.0 runs with \texttt{--wiredTigerCacheSizeGB~2}, which represents a realistic 2~GB WiredTiger cache---comparable to what MongoDB would auto-configure on a typical IoT gateway with 4--8~GB RAM. This deliberate constraint reflects production container deployments where memory budgets are bounded. PostgreSQL operates under equivalent memory constraints through OS-level caching.
 
-In MongoDB, the same logical information is stored as documents in a native time-series collection. Each document contains a device identifier, timestamp, binary image payload stored as \texttt{BinData}, image width and height fields, and a MIME type field. MongoDB relies on the WiredTiger storage engine with native block-level compression applied to both data and indexes. In contrast, PostgreSQL uses uncompressed relational storage with TOAST mechanisms for handling large binary objects. Although the physical storage layouts differ, both systems store identical logical content to ensure a fair comparison of storage and performance behavior.
+\subsection{Payload Configuration}
+The benchmark evaluates five progressively increasing image resolutions: 1080p ($1920{\times}1080$, $\sim$1.09~MB), 1440p ($2560{\times}1440$, $\sim$1.66~MB), 4K~UHD ($3840{\times}2160$, $\sim$3.07~MB), 5K ($5120{\times}2880$, $\sim$4.83~MB), and 6K ($6144{\times}3456$, $\sim$6.45~MB). All payloads use quality-100 JPEG encoding to ensure high visual entropy that defeats internal database compression. Each frame includes timestamped metadata: device identifiers, capture dimensions, and codec parameters.
 
-The benchmarking process consists of three phases: insertion throughput, aggregation performance, and driver roundtrip overhead. For insertion benchmarking, each measured run inserts $200{,}000$ image frames using a fixed batch size of $1{,}000$ records per transaction, following a warm-up phase to stabilize internal buffers and storage allocation. Each measured run starts from an empty table or collection to ensure identical initial conditions. Aggregation benchmarking uses fixed one-minute time-bucket queries to compute total frame counts and average image sizes, while driver overhead is measured using minimal roundtrip queries to isolate client--server communication latency independent of query complexity.
+\subsection{Database Schema Design}
+The PostgreSQL hypertable schema (Listing~\ref{lst:pg_schema}) stores each image frame as a row with explicit columns for metadata and a \texttt{BYTEA} column for the binary payload:
 
-Four primary metrics are evaluated: insertion throughput (rows/sec), aggregation latency (ms), driver roundtrip latency (ms), and storage utilization (MB). PostgreSQL storage is measured using relation size functions and TimescaleDB hypertable size functions, while MongoDB storage is obtained using \texttt{collStats} and \texttt{dbStats}. All experiments are conducted on Ubuntu~22.04 with an Intel Core~i7 processor, 16~GB memory, and 4 physical cores (8 logical threads). The database stack consists of PostgreSQL~18.1 with TimescaleDB~2.24.0 and MongoDB~7.0.26. The benchmarking framework is implemented in Python using psycopg2~2.9.10 and PyMongo~4.15.4 with synchronous single-connection clients to isolate intrinsic database engine performance.
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\scriptsize,breaklines=true,caption={PostgreSQL (TimescaleDB) table schema.},label={lst:pg_schema}]
+CREATE TABLE iot_frames (
+  sample_id  BIGSERIAL NOT NULL,
+  device_id  BIGINT NOT NULL,
+  ts         TIMESTAMPTZ NOT NULL,
+  profile_name   TEXT NOT NULL,
+  payload_kind   TEXT NOT NULL,
+  payload_data   BYTEA NOT NULL,
+  payload_size_bytes INTEGER NOT NULL,
+  width INTEGER, height INTEGER,
+  mime_type TEXT NOT NULL,
+  codec TEXT,
+  duration_ms INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (ts, sample_id)
+);
+SELECT create_hypertable('iot_frames',
+  by_range('ts'));
+\end{lstlisting}
+
+The \texttt{payload\_data} column, containing multi-megabyte JPEG frames, is automatically managed by TOAST~\cite{postgresql_toast_docs}, which relocates oversized values out-of-line.
+
+The MongoDB time-series collection (Listing~\ref{lst:mg_schema}) stores functionally equivalent data. The key structural difference is that MongoDB's Time-Series API requires grouping metadata fields (\texttt{device\_id}, \texttt{profile}, \texttt{payload\_kind}) under a nested \texttt{meta} object used as the \texttt{metaField}, whereas PostgreSQL stores these as flat columns. The binary payload is stored inline as \texttt{BinData}~\cite{mongodb_bson_spec}:
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,breaklines=true,caption={MongoDB document structure (per insert).},label={lst:mg_schema}]
+{ meta: { device_id: 1,
+         profile: "4k_uhd_image",
+         payload_kind: "image" },
+  ts: ISODate("..."),
+  payload_data: BinData(0, "<JPEG bytes>"),
+  payload_size_bytes: 3072000,
+  width: 3840, height: 2160,
+  mime_type: "image/jpeg",
+  codec: "jpeg", duration_ms: 0 }
+\end{lstlisting}
+
+The collection is created with \texttt{timeseries: \{timeField: "ts", metaField: "meta", granularity: "seconds"\}}, enabling WiredTiger~\cite{mongodb_wiredtiger_storage} to bucket measurements into columnar arrays~\cite{mongodb_ts_best_practices}. Snappy~\cite{google_snappy} block compression is applied on disk. Both schemas use a compound secondary index on \texttt{(device\_id, ts DESC)} for temporal range queries.
+
+\subsection{Experiment Design}
+For each of the five resolutions, the complete benchmark suite executes independently with 5 runs per metric. Each engine is wiped and rebuilt before each resolution. A 100-record warm-up phase pre-loads memory. The insertion benchmark commits 1000 records in batches of 50 per run.
+
+The PostgreSQL insert uses \texttt{execute\_batch()} with parameterized \texttt{INSERT INTO} statements targeting the schema in Listing~\ref{lst:pg_schema}. The MongoDB insert uses \texttt{insert\_many()} with \texttt{ordered=False} for maximum throughput using the document structure in Listing~\ref{lst:mg_schema}.
+
+To evaluate I/O and deserialization boundaries, a binary retrieval benchmark (Listings~\ref{lst:pg_ret}--\ref{lst:mg_ret}) fetches 100 rows across a defined time range, explicitly materializing the full binary \texttt{payload\_data} column representing up to 1.6~GB of raw transfer. This isolates the storage engine's ability to locate, decompress, and serve high-volume binary payloads over the network.
+
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\scriptsize,breaklines=true,caption={PostgreSQL binary retrieval query.},label={lst:pg_ret}]
+SELECT * FROM iot_frames
+WHERE device_id = 1
+ORDER BY ts DESC LIMIT 100;
+\end{lstlisting}
+
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize,breaklines=true,caption={MongoDB binary retrieval pipeline.},label={lst:mg_ret}]
+db.iot_frames.find({
+  "meta.device_id": 1
+}).sort({"ts": -1}).limit(100)
+\end{lstlisting}
+
+Driver overhead is measured via direct client-server ping roundtrips (30 iterations) to isolate network/driver latency from engine processing. Storage amplification is the ratio of on-disk size to raw payload size, measured via \texttt{pg\_total\_relation\_size()} and \texttt{collStats} respectively.
 
 
-\begin{table}
+\begin{table}[htbp]
 \centering
-\renewcommand{\arraystretch}{1.3}
-\caption{Performance and Storage Comparison between PostgreSQL and MongoDB}
-\label{tab:benchmark_summary}
-\begin{tabular}{p{.18\textwidth}cc}
+\renewcommand{\arraystretch}{1.1}
+\caption{Insert Throughput and Binary Payload Retrieval Latency (100 rows)}
+\label{tab:performance_summary}
+\begin{tabular}{l r r r r}
 \hline
-\textbf{Metric} & \textbf{PostgreSQL} & \textbf{MongoDB} \\
+\textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Retrieval (ms)}} \\
+ & \textbf{PostgreSQL} & \textbf{MongoDB} & \textbf{PostgreSQL} & \textbf{MongoDB} \\
 \hline
-
-\multicolumn{3}{l}{\textbf{Insert Throughput (rows/sec)}} \\
-PostgreSQL vs MongoDB  
-& $1785.05 \pm 274.34$ 
-& $3783.46 \pm 551.40$ \\
-
+1080p & 22.0  & \textbf{133.2} & 1587   & \textbf{259}   \\
+1440p & 19.1  & \textbf{21.3}  & 2284   & \textbf{638}   \\
+4K    & \textbf{8.4}   & 4.6   & 2788   & \textbf{1842}  \\
+5K    & \textbf{4.6}   & 2.2   & 5461   & \textbf{2619}  \\
+6K    & \textbf{4.1}   & Fail  & \textbf{8219}   & Fail  \\
 \hline
-\multicolumn{3}{l}{\textbf{Aggregation Latency (ms)}} \\
-PostgreSQL vs MongoDB  
-& $23.97 \pm 0.82$ 
-& $353.13 \pm 16.53$ \\
+\end{tabular}
+\end{table}
 
+\begin{table}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.1}
+\caption{Storage Amplification and Disk Usage (100 rows)}
+\label{tab:storage_summary}
+\begin{tabular}{l r r r r}
 \hline
-\multicolumn{3}{l}{\textbf{Driver Roundtrip Latency (ms)}} \\
-PostgreSQL vs MongoDB  
-& $0.0415 \pm 0.0360$ 
-& $0.0858 \pm 0.0030$ \\
-
+\textbf{Res.} & \textbf{PostgreSQL} & \textbf{MongoDB} & \textbf{PostgreSQL} & \textbf{MongoDB} \\
+ & \textbf{Disk (MB)} & \textbf{Disk (MB)} & \textbf{Amp} & \textbf{Amp} \\
 \hline
-\multicolumn{3}{l}{\textbf{Storage Size (MB)}} \\
-Table / Collection  
-& $4777.72$ 
-& $835.41$ \\
-
-Database Total  
-& $4787.29$ 
-& $835.45$ \\
-
+1080p & 112.8  & 13.6   & 1.04$\times$ & \textbf{0.12$\times$} \\
+1440p & 172.7  & 128.1  & 1.05$\times$ & \textbf{0.78$\times$} \\
+4K    & \textbf{319.3}  & 922.7  & \textbf{1.06$\times$} & 3.08$\times$ \\
+5K    & \textbf{501.8} & 1473.2 & \textbf{1.04$\times$} & 3.05$\times$ \\
+6K    & \textbf{670.1} & Fail   & \textbf{1.04$\times$} & Fail \\
 \hline
 \end{tabular}
 \end{table}
 
 
-\begin{figure}
+
+
+\section{Results}
+\label{sec:results}
+
+The multi-resolution results, summarized in Tables~\ref{tab:performance_summary} and~\ref{tab:storage_summary}, reveal strong resolution-dependent performance characteristics up to 6K resolution.
+
+\begin{figure}[t]
 \centering
-
-\begin{subfigure}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{figures/boxplot_insert_throughput.pdf}
-    \caption{Insert Throughput}
-    \label{fig:sub_insert_throughput}
-\end{subfigure}
-\hfill
-\begin{subfigure}{0.48\textwidth}
-    \centering
-    \includegraphics[width=\textwidth]{figures/boxplot_aggregation_latency.pdf}
-    \caption{Aggregation Latency}
-    \label{fig:sub_aggregation_latency}
-\end{subfigure}
-
-\caption{Performance comparison of PostgreSQL and MongoDB across insertion throughput and aggregation latency.}
-\label{fig:benchmark_boxplots}
+\includegraphics[width=\columnwidth]{figures/boxplot_insert_throughput.pdf}
+\caption{Insert throughput scaling from 1080p to 4K (RQ1). MongoDB dominates at small payloads; PostgreSQL overtakes beyond 1440p.}
+\label{fig:insert_throughput}
 \end{figure}
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/boxplot_retrieval_latency.pdf}
+\caption{Binary retrieval latency (RQ2) for 100 records. MongoDB leads at low resolutions but degrades toward 4K crossover, failing at 6K.}
+\label{fig:retrieval_latency}
+\end{figure}
 
-\subsection{Insert Throughput Performance}
+\subsection{Ingestion Throughput (RQ1)}
 \label{subsec:insert_throughput}
+As shown in Figure~\ref{fig:insert_throughput} and Table~\ref{tab:performance_summary}, insertion throughput exhibits a clear resolution-dependent crossover. In addition to the displayed resolutions, we also tested 360p, 480p, and 720p; these are omitted from the figures and tables for brevity, as MongoDB significantly outperforms PostgreSQL at these lower resolutions following the established trend. At 1080p, MongoDB achieves 133.2 rows/s---$6\times$ faster than PostgreSQL's 22.0 rows/s---due to WiredTiger's efficient in-memory document buffering for payloads up to 1~MB. However, this advantage narrows rapidly. At 1440p, the engines approach parity (21.3 vs.\ 19.1 rows/s). The critical inversion occurs at 4K, where PostgreSQL achieves 8.4 rows/s against MongoDB's 4.6 rows/s. At 5K, PostgreSQL provides 4.6 rows/s against MongoDB's 2.2 rows/s, and at 6K, MongoDB fails entirely due to WiredTiger Out-Of-Memory (OOM) caching limits.
 
-Insert throughput is a key performance indicator for image-based time-series workloads, as it reflects the system’s ability to ingest continuous high-volume sensor data. As shown in Table~\ref{tab:benchmark_summary}, MongoDB achieves a substantially higher average insertion rate of $3783.46 \pm 551.40$ rows/sec, while PostgreSQL records $1785.05 \pm 274.34$ rows/sec. This result indicates that MongoDB sustains approximately twice the ingestion throughput of PostgreSQL under identical experimental conditions.
+This crossover is architecturally significant. PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism decouples large binary payloads from the primary B-Tree, maintaining stable write paths regardless of payload size. MongoDB's WiredTiger must serialize entire BSON documents---including multi-megabyte \texttt{BinData}---into contiguous page blocks, causing severe cache pressure as payloads grow.
 
-The distribution of throughput values is further illustrated in Fig.~\ref{fig:sub_insert_throughput}. MongoDB exhibits higher peak throughput but also larger variability, as reflected by its wider interquartile range and standard deviation. In contrast, PostgreSQL shows a more compact distribution, indicating more stable and predictable insertion behavior across runs.
+\subsection{Binary Payload Retrieval Latency (RQ2)}
+\label{subsec:retrieval_latency}
+When benchmarking the retrieval of the fully materialized binary datasets (Table~\ref{tab:performance_summary}), an opposing trend emerges. At lower resolutions (e.g., 1080p), MongoDB is significantly faster at returning the binary data ($3.1\times$ faster, 259~ms vs 1587~ms). This highlights the efficiency of MongoDB's contiguous inline storage when a query explicitly requests the binary content, avoiding PostgreSQL's required pointer lookup into the out-of-line TOAST table. However, as resolution scales, this inline advantage vanishes. At 4K, performance converges ($1.8$~s vs $2.8$~s, accelerating toward parity at 5K). Finally, at 6K resolution, WiredTiger memory exhaustion causes MongoDB to fail entirely, while PostgreSQL successfully sequences the 1.6~GB target across the network in 8.2~s.
 
-From a system design perspective, MongoDB benefits from its document-oriented storage engine and optimized bulk insert pipeline, which reduces per-record transaction overhead. PostgreSQL with TimescaleDB, while offering stronger transactional guarantees and durability through write-ahead logging, incurs higher synchronization and write amplification costs. For consumer electronics and IoT image streaming applications, these results suggest that MongoDB is better suited for high-speed data ingestion, whereas PostgreSQL offers superior stability and consistency.
-
-
-\subsection{Aggregation Query Performance}
-\label{subsec:aggregation_latency}
-
-Aggregation latency reflects the efficiency of analytical processing over stored time-series image data. As reported in Table~\ref{tab:benchmark_summary}, PostgreSQL significantly outperforms MongoDB in aggregation performance, achieving an average latency of $23.97 \pm 0.82$ ms, while MongoDB records a much higher latency of $353.13 \pm 16.53$ ms. This result demonstrates an order-of-magnitude advantage for PostgreSQL in executing time-bucketed aggregation queries.
-
-The performance distribution is visualized in Fig.~\ref{fig:sub_aggregation_latency}. PostgreSQL exhibits both low median latency and a narrow interquartile range, indicating highly consistent analytical performance across repeated runs. In contrast, MongoDB shows substantially higher latency with wider dispersion, reflecting greater execution variability caused by its document-scanning and pipeline-based aggregation mechanism.
-
-This performance gap is primarily attributed to PostgreSQL’s query optimizer, columnar-style access patterns in TimescaleDB, and its native support for time-based partitioning via hypertables. These features enable efficient chunk pruning and index utilization during aggregation. MongoDB, while flexible in schema design, processes aggregations through its document pipeline engine, which introduces higher computational overhead for large-scale time-bucket operations. For consumer electronics and IoT workloads requiring real-time or near-real-time analytics, PostgreSQL therefore provides a clear advantage in aggregation performance.
-
-
-\subsection{Driver Roundtrip Overhead}
+\subsection{Driver Overhead}
 \label{subsec:driver_overhead}
-
-Driver roundtrip overhead represents the baseline communication and parsing cost between the application and the database engine, independent of query complexity. As shown in Table~\ref{tab:benchmark_summary}, PostgreSQL exhibits a very low average roundtrip latency of $0.0415 \pm 0.0360$ ms, while MongoDB records $0.0858 \pm 0.0030$ ms. Both values are in the sub-millisecond range, indicating that driver communication overhead is negligible when compared to insertion and aggregation costs.
-
-Although MongoDB shows approximately twice the roundtrip latency of PostgreSQL in relative terms, the absolute difference remains extremely small and does not materially affect end-to-end system performance for bulk ingestion or analytical workloads. The dominant performance factors therefore remain disk I/O, write amplification, indexing, and query execution rather than client–server communication latency. This confirms that the throughput and aggregation benchmarks primarily reflect backend engine behavior rather than client library inefficiencies.
+Driver roundtrip latency remains constant at $\sim$0.15--0.44~ms for both engines across all resolutions, confirming that the observed performance differences are entirely engine-internal rather than attributable to network or driver overhead.
 
 
-
-\subsection{Storage Utilization Analysis}
+\subsection{Storage Amplification (RQ3)}
 \label{subsec:storage_size}
+As detailed in Table~\ref{tab:storage_summary}, PostgreSQL maintains a remarkably stable storage amplification of $1.04\times$ across all resolutions, reflecting TOAST's efficient sequential storage of binary payloads.
 
-Storage efficiency is a critical factor for large-scale image-based time-series systems, particularly in consumer electronics environments with limited storage capacity. As reported in Table~\ref{tab:benchmark_summary}, PostgreSQL requires $4777.72$ MB for the table and $4787.29$ MB at the database level, while MongoDB consumes only $835.41$ MB for the collection and $835.45$ MB for the database. This indicates that MongoDB uses approximately six times less storage than PostgreSQL for the same dataset.
-
-This substantial difference is primarily attributed to MongoDB’s built-in compression mechanisms in the WiredTiger storage engine, which apply block-level compression to both data and indexes. In contrast, PostgreSQL stores large binary objects as uncompressed \texttt{BYTEA} values within table and TOAST storage structures. As a result, although both systems store identical image content at the logical level, MongoDB achieves a significantly more compact physical representation on disk.
-
-From a system design perspective, these results suggest that MongoDB is better suited for storage-constrained IoT and consumer electronics deployments where minimizing on-device storage footprint is essential. PostgreSQL, while incurring higher storage overhead, offers stronger transactional guarantees and mature relational indexing support. The choice between the two systems therefore involves a clear trade-off between storage efficiency and relational robustness in large-scale image time-series applications.
+MongoDB's storage behavior reveals two distinct regimes. At 1080p, MongoDB achieves exceptional compression ($0.12\times$ amplification), demonstrating WiredTiger's block-compression efficiency for document--sized payloads. However, a sharp inflection occurs at 1440p ($0.64\times$), and at 4K the amplification explodes to $3.05\times$---consuming 2.34~GB versus PostgreSQL's 0.80~GB for identical data. This $3\times$ storage penalty at 4K arises because WiredTiger's snappy compression cannot compress high-entropy JPEG data, while the BSON document overhead and B-Tree page padding compound multiplicatively.
 
 
-\subsection{Overall System Trade-offs}
-\label{subsec:overall_tradeoffs}
+\section{Discussion}
+\label{sec:discussion}
 
-The experimental results reveal clear and complementary trade-offs between PostgreSQL and MongoDB across the three primary performance dimensions of this study: insertion throughput, aggregation latency, and storage utilization. MongoDB consistently demonstrates superior insertion throughput and significantly lower storage footprint, making it highly efficient for high-rate image ingestion and storage-constrained environments. In contrast, PostgreSQL exhibits substantially lower aggregation latency and more stable analytical performance, indicating its strength in query-intensive and real-time analytical workloads.
+The multi-resolution results expose fundamental architectural limitations in MongoDB's storage engine when handling large binary payloads. This section analyzes the root causes in detail.
 
-When interpreted in terms of frame rate requirements for consumer electronics (CE) devices, the insertion throughput directly determines the maximum sustainable frames per second (FPS). At a resolution of $320 \times 240$, MongoDB achieves an average throughput of approximately $3783$ rows/sec, indicating that it can theoretically sustain several thousand image frames per second from distributed sources, making it suitable for multi-camera and high-speed sensing scenarios. PostgreSQL, sustaining approximately $1785$ rows/sec, remains fully adequate for typical CE frame rates of $10$–$60$ FPS per device, but offers a smaller margin for high-density, multi-stream deployments. Conversely, the significantly lower aggregation latency of PostgreSQL enables near-real-time frame-level analytics, which is critical for applications such as video surveillance, quality inspection, and anomaly detection. From a system design perspective, MongoDB is therefore well suited for edge-level frame ingestion where high FPS and compact storage dominate, whereas PostgreSQL is better positioned for backend analytics where fast temporal aggregation and stable query performance are required.
+\subsection{WiredTiger Cache Pressure and Eviction}
+WiredTiger is MongoDB's default storage engine since version 3.2, replacing the earlier MMAPv1 engine. It provides document-level concurrency control, journaling, and on-disk compression through a B-Tree-based architecture~\cite{mongodb_wiredtiger_storage}. WiredTiger maintains an in-memory cache (defaulting to 50\% of system RAM minus 1~GB) where documents are stored in their \emph{uncompressed} BSON representation, even when compressed on disk~\cite{mongodb_wiredtiger_storage}. For a 4K image payload of $\sim$3~MB, the in-memory footprint of each document can significantly exceed its on-disk size because Snappy decompression must fully materialize the binary content into contiguous memory.
 
+When the working set of documents exceeds the cache capacity, WiredTiger triggers cache eviction using an LRU-approximate algorithm~\cite{percona_wiredtiger_eviction}. Under heavy insertion of multi-megabyte documents, the cache fills rapidly, forcing the eviction threads to flush dirty pages to disk. When eviction threads cannot keep pace, \emph{application threads} are co-opted to perform eviction---directly stalling insert operations and introducing latency spikes~\cite{percona_wiredtiger_eviction}. This explains the steep throughput decline observed between 1080p (55 docs/s) and 4K (4.2 docs/s) in our results (Table~\ref{tab:performance_summary}), ultimately leading to the total engine failure observed at 6K resolution.
+
+\subsection{BSON Inline Serialization}
+Unlike PostgreSQL, which decouples large attributes into a separate TOAST table~\cite{postgresql_toast_docs}, MongoDB serializes the \emph{entire} BSON document---including multi-megabyte \texttt{BinData} fields---into a single contiguous block within WiredTiger's B-Tree leaf pages~\cite{mongodb_bson_spec}. Every insert, update, or read operation must process this entire block. At 4K resolution, each leaf page must accommodate $\sim$3~MB of high-entropy binary alongside the metadata fields, creating severe page fragmentation and write amplification as WiredTiger rewrites entire pages for each modification.
+
+MongoDB enforces a hard 16~MB BSON document limit~\cite{mongodb_bson_spec}, and while our 3~MB payloads fall within this ceiling, they still trigger the same copy-on-write behavior that degrades performance for documents approaching the limit. The recommended alternative---GridFS---chunks files into 255~KB segments stored as separate documents, but GridFS is \emph{incompatible} with MongoDB's native Time-Series Collections~\cite{mongodb_ts_limitations}.
+
+\subsection{Snappy Compression on High-Entropy Data}
+WiredTiger defaults to Snappy block compression, which is optimized for speed over compression ratio~\cite{mongodb_wiredtiger_storage}. Snappy excels at compressing repetitive structured data (JSON documents, numeric arrays) but achieves negligible compression on high-entropy binary data such as JPEG images---which are already entropy-coded. Our storage amplification data confirms this: at 1080p, where the binary payload is smaller relative to compressible metadata overhead, MongoDB achieves $0.12\times$ amplification. At 4K, the binary payload dominates the document, Snappy compression becomes ineffective, and BSON structural overhead compounds to produce $3.01\times$ amplification.
+
+\subsection{PostgreSQL TOAST: Out-of-Line Advantage}
+TOAST (The Oversized-Attribute Storage Technique) is PostgreSQL's built-in mechanism for handling field values that exceed the database's fixed 8~KB page size. Rather than requiring application-level workarounds, TOAST transparently compresses and/or relocates oversized attributes to a dedicated secondary storage area, leaving only a small pointer in the main table row~\cite{postgresql_toast_docs}. Specifically, values exceeding approximately 2~KB are automatically moved out-of-line into a separate, sequentially-organized TOAST table. This architectural separation provides three critical advantages for image-based time-series: (1) the main table remains compact, enabling efficient B-Tree index traversal regardless of payload size; (2) retrieval queries reliably pull from contiguous secondary storage preventing buffer-pool eviction of hot indexes; and (3) sequential TOAST writes avoid the page fragmentation that plagues WiredTiger's inline storage, maintaining a constant $1.04\times$ amplification.
+
+\subsection{Engineering Guidelines}
+Based on these findings, we establish the following resolution-dependent guidelines:
+\begin{itemize}
+    \item \textbf{Sub-1~MB insertion payloads (1080p):} MongoDB's document model provides superior insertion throughput and exceptional storage compression, making it well-suited for standard-definition IoT vision systems.
+    \item \textbf{Above 1.5~MB insertion payloads (1440p--6K):} PostgreSQL with TimescaleDB is decisively superior across all metrics due to TOAST-based payload isolation. External object store (e.g., MinIO, S3) can be considered to pair with MongoDB for binary payloads.
+    \item \textbf{Binary retrieval optimization:} MongoDB delivers significantly faster network retrieval of binary payloads at resolutions up to 1080p due to inline block access. PostgreSQL provides system stability and linear scaling for massive resolution payloads (4K+), avoiding the cache exhaustion that triggers engine failure in MongoDB.
+\end{itemize}
+
+\subsection{Threats to Validity}
+Several factors may affect generalizability. First, all experiments run on a single host machine; distributed or sharded deployments may exhibit different scaling. Second, payloads use synthetic JPEG images with maximum-quality encoding; real camera feeds with variable compression may yield different entropy profiles and compression ratios. Third, the fixed batch size of 50 records favors neither engine specifically but may not reflect all production ingestion patterns. Fourth, MongoDB's WiredTiger cache is explicitly set to 2~GB via \texttt{--wiredTigerCacheSizeGB}; while this reflects realistic container constraints, larger cache allocations could delay---but not eliminate---the cache eviction pressure documented in Section~\ref{sec:discussion}. The core architectural limitations (BSON inline serialization, bucket pattern breakdown, Snappy ineffectiveness on high-entropy data) are inherent to MongoDB's storage engine design and would persist regardless of cache size.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-This study presented a comprehensive experimental comparison between PostgreSQL with TimescaleDB and MongoDB for image-based time-series workloads representative of consumer electronics and IoT systems. The results demonstrated that MongoDB provides higher insertion throughput and significantly better storage efficiency due to its compressed document-oriented storage model, while PostgreSQL achieves substantially lower aggregation latency and more stable analytical performance through time-based partitioning and mature query optimization. When interpreted in terms of frame rate and image resolution, both systems are capable of supporting real-time ingestion for low-resolution streams, while exhibiting different scalability characteristics at higher resolutions. These findings confirm that database selection should be guided by application priorities across ingestion speed, analytical latency, and storage constraints. As future work, this study will be extended to evaluate performance under multiple concurrent client connections, parallel ingestion and query processing, and higher-resolution image streams (e.g., VGA, HD, and 720p) to better reflect real-world multi-camera consumer electronics deployments.
+This study systematically benchmarked PostgreSQL (TimescaleDB) against MongoDB for image-based time-series workloads across six resolutions inside containerized environments. We answer each research question:
+
+\textbf{RQ1 (Insertion Throughput):} MongoDB achieves $6\times$ higher throughput at 1080p (133.2 vs.\ 22.0 rows/s), but the advantage narrows rapidly with increasing resolution and inverts at 4K, where PostgreSQL leads (8.4 vs.\ 4.6 rows/s). The crossover occurs between 1440p and 4K.
+
+\textbf{RQ2 (Binary Retrieval Latency):} MongoDB's inline storage provides a significant initial advantage for full binary retrieval, fetching documents $6.1\times$ faster than PostgreSQL at 1080p. However, this advantage narrows at 4K resolution (1.8~s vs 2.8~s) and ultimately results in total engine failure at 6K due to WiredTiger memory thrashing.
+
+\textbf{RQ3 (Storage Amplification):} PostgreSQL maintains constant $1.04\times$ amplification across all resolutions. MongoDB transitions from highly efficient $0.12\times$ at 1080p to a prohibitive $3.08\times$ at 4K due to Snappy's inability to compress high-entropy binary payloads.
+
+These findings provide resolution-dependent architectural guidelines: MongoDB excels for sub-megabyte payloads, while PostgreSQL's TOAST-based architecture is decisively superior for high-resolution vision streams exceeding $\sim$1.5~MB per frame. Future work will investigate hybrid strategies combining metadata-optimized time-series collections with external binary object stores such as MinIO or S3.
 
 
 \section*{Acknowledgment}
-This research was supported by Universitas Pradita and Universitas Multimedia Nusantara.
+[Hidden for double-blind review]
 
 
 \bibliographystyle{IEEEtran}

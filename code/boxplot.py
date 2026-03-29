@@ -1,175 +1,129 @@
 import csv
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
+# =========================
+# GLOBAL FONT SETTINGS
+# =========================
+matplotlib.rcParams.update({
+    'font.size': 14,
+    'axes.titlesize': 16,
+    'axes.labelsize': 14,
+    'xtick.labelsize': 13,
+    'ytick.labelsize': 13,
+    'legend.fontsize': 13,
+    'figure.titlesize': 16,
+})
 
 # =========================
 # FILE PATHS
 # =========================
 
-POSTGRES_INSERT_RUNS = "results_postgres_insert_runs.csv"
-MONGO_INSERT_RUNS = "results_mongo_insert_runs.csv"
+POSTGRES_INSERT_SUMMARY = "results_postgres_insert_summary"
+MONGO_INSERT_SUMMARY = "results_mongo_insert_summary"
 
-POSTGRES_AGG_RUNS = "results_postgres_aggregate_runs.csv"
-MONGO_AGG_RUNS = "results_mongo_aggregate_runs.csv"
+POSTGRES_RET_SUMMARY = "results_postgres_retrieve_summary"
+MONGO_RET_SUMMARY = "results_mongo_retrieve_summary"
 
-POSTGRES_DRIVER_SUMMARY = "results_postgres_driver_summary.csv"
-MONGO_DRIVER_SUMMARY = "results_mongo_driver_summary.csv"
+# The x-axis order for our scaling plots
+PROFILE_ORDER = ["1080p_fhd_image", "1440p_qhd_image", "4k_uhd_image", "5k_image", "6k_image"]
+PROFILE_LABELS = ["1080p", "1440p", "4K", "5K", "6K"]
 
-POSTGRES_INSERT_SUMMARY = "results_postgres_insert_summary.csv"
-MONGO_INSERT_SUMMARY = "results_mongo_insert_summary.csv"
+def load_summary_data(stem, y_col_mean, y_col_std=None):
+    """
+    Returns a dictionary mapping profile -> (mean, std)
+    """
+    data = {}
+    for prof in PROFILE_ORDER:
+        path = f"{stem}_{prof}.csv"
+        try:
+            with open(path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                if not rows: continue
+                last_row = rows[-1]
+                if y_col_mean in last_row:
+                    mean_val = float(last_row[y_col_mean])
+                    std_val = float(last_row[y_col_std]) if y_col_std and y_col_std in last_row else 0.0
+                    data[prof] = (mean_val, std_val)
+        except Exception as e:
+            pass
+    return data
 
+def extract_ordered_series(data_dict):
+    means = []
+    stds = []
+    valid_labels = []
+    for i, prof in enumerate(PROFILE_ORDER):
+        if prof in data_dict:
+            means.append(data_dict[prof][0])
+            stds.append(data_dict[prof][1])
+            valid_labels.append(PROFILE_LABELS[i])
+    return valid_labels, means, stds
 
-# =========================
-# CSV LOADERS
-# =========================
-
-def load_column_from_csv(path, column_name):
-    values = []
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            values.append(float(row[column_name]))
-    return values
-
-
-def load_single_value_from_summary(path, column_name):
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        if not rows:
-            raise RuntimeError(f"No data in {path}")
-        return float(rows[-1][column_name])
-
-
-# =========================
-# AXIS + BOXPLOT STYLE
-# =========================
-
-def style_boxplot(ax):
-    # Horizontal grid only
-    ax.grid(True, axis="y")
-
-    # Show ONLY the x-axis line (bottom spine)
-    ax.spines["bottom"].set_visible(True)
-    ax.spines["left"].set_visible(False)
+def style_lineplot(ax):
+    ax.grid(True, linestyle="--", alpha=0.7)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-
-    # Improve label spacing
     ax.tick_params(axis="x", pad=6)
     ax.tick_params(axis="y", pad=6)
 
+# -----------------
+# 1. Insert Throughput
+# -----------------
+pg_data = load_summary_data(POSTGRES_INSERT_SUMMARY, "mean_rows_per_sec", "std_rows_per_sec")
+mg_data = load_summary_data(MONGO_INSERT_SUMMARY, "mean_rows_per_sec", "std_rows_per_sec")
 
-# =========================
-# 1) BOX PLOT: INSERT THROUGHPUT
-# =========================
+labels_pg, pg_y, pg_std = extract_ordered_series(pg_data)
 
-pg_insert_tp = load_column_from_csv(POSTGRES_INSERT_RUNS, "rows_per_sec")
-mongo_insert_tp = load_column_from_csv(MONGO_INSERT_RUNS, "rows_per_sec")
+# Remove 6K from MongoDB since it silently failed
+if "6k_image" in mg_data:
+    del mg_data["6k_image"]
 
-plt.figure(figsize=(8, 4))
-plt.boxplot(
-    [pg_insert_tp, mongo_insert_tp],
-    tick_labels=["PostgreSQL", "MongoDB"],
-    widths=0.6,
-    showmeans=True,
-    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
-)
+labels_mg, mg_y, mg_std = extract_ordered_series(mg_data)
 
-plt.title("Insert Throughput (rows/sec)")
-plt.ylabel("Rows per second")
-
-style_boxplot(plt.gca())
-
-plt.tight_layout(pad=0.4)
-plt.savefig("boxplot_insert_throughput.pdf", bbox_inches="tight", pad_inches=0.05)
+plt.figure(figsize=(8, 4.5))
+if pg_y:
+    plt.errorbar(labels_pg, pg_y, yerr=pg_std, label="PostgreSQL", marker="o", capsize=5, lw=2.5, markersize=8)
+if mg_y:
+    plt.errorbar(labels_mg, mg_y, yerr=mg_std, label="MongoDB", marker="s", capsize=5, lw=2.5, markersize=8)
+plt.title("Insert Throughput vs Image Resolution")
+plt.xlabel("Image Resolution")
+plt.ylabel("Rows per Second")
+plt.legend()
+style_lineplot(plt.gca())
+plt.tight_layout()
+plt.savefig("../paper/figures/boxplot_insert_throughput.pdf")
 plt.close()
 
+# -----------------
+# 2. Binary Retrieval
+# -----------------
+pg_data = load_summary_data(POSTGRES_RET_SUMMARY, "mean_latency_ms", "std_latency_ms")
+mg_data = load_summary_data(MONGO_RET_SUMMARY, "mean_latency_ms", "std_latency_ms")
 
-# =========================
-# 2) BOX PLOT: AGGREGATION LATENCY
-# =========================
+labels_pg, pg_y, pg_std = extract_ordered_series(pg_data)
 
-pg_agg_lat = load_column_from_csv(POSTGRES_AGG_RUNS, "latency_ms")
-mongo_agg_lat = load_column_from_csv(MONGO_AGG_RUNS, "latency_ms")
+# Remove 6K from MongoDB since it silently failed
+if "6k_image" in mg_data:
+    del mg_data["6k_image"]
 
-plt.figure(figsize=(8, 4))
-plt.boxplot(
-    [pg_agg_lat, mongo_agg_lat],
-    tick_labels=["PostgreSQL", "MongoDB"],
-    widths=0.6,
-    showmeans=True,
-    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
-)
+labels_mg, mg_y, mg_std = extract_ordered_series(mg_data)
 
-plt.title("Aggregation Latency (ms)")
-plt.ylabel("Milliseconds")
-
-style_boxplot(plt.gca())
-
-plt.tight_layout(pad=0.4)
-plt.savefig("boxplot_aggregation_latency.pdf", bbox_inches="tight", pad_inches=0.05)
+plt.figure(figsize=(8, 4.5))
+if pg_y:
+    plt.errorbar(labels_pg, pg_y, yerr=pg_std, label="PostgreSQL", marker="o", capsize=5, lw=2.5, markersize=8)
+if mg_y:
+    plt.errorbar(labels_mg, mg_y, yerr=mg_std, label="MongoDB", marker="s", capsize=5, lw=2.5, markersize=8)
+plt.title("Binary Retrieval Latency vs Image Resolution")
+plt.xlabel("Image Resolution")
+plt.ylabel("Latency (ms) for 100 rows")
+plt.yscale("log")
+plt.legend()
+style_lineplot(plt.gca())
+plt.tight_layout()
+plt.savefig("../paper/figures/boxplot_retrieval_latency.pdf")
 plt.close()
 
-
-# =========================
-# 3) BOX PLOT: DRIVER ROUNDTRIP LATENCY
-# =========================
-
-pg_driver_lat = load_single_value_from_summary(
-    POSTGRES_DRIVER_SUMMARY, "mean_latency_ms"
-)
-mongo_driver_lat = load_single_value_from_summary(
-    MONGO_DRIVER_SUMMARY, "mean_latency_ms"
-)
-
-plt.figure(figsize=(8, 4))
-plt.boxplot(
-    [[pg_driver_lat], [mongo_driver_lat]],
-    tick_labels=["PostgreSQL", "MongoDB"],
-    widths=0.6,
-    showmeans=True,
-    meanprops=dict(marker="x", markeredgecolor="black", markersize=8)
-)
-
-plt.title("Driver Roundtrip Latency (ms)")
-plt.ylabel("Milliseconds")
-
-style_boxplot(plt.gca())
-
-plt.tight_layout(pad=0.4)
-plt.savefig("boxplot_driver_latency.pdf", bbox_inches="tight", pad_inches=0.05)
-plt.close()
-
-
-# =========================
-# 4) STORAGE SIZE TABLE (PRINT ONLY)
-# =========================
-
-pg_table_mb = load_single_value_from_summary(
-    POSTGRES_INSERT_SUMMARY, "mean_table_total_after_mb"
-)
-pg_db_mb = load_single_value_from_summary(
-    POSTGRES_INSERT_SUMMARY, "mean_db_size_after_mb"
-)
-
-mongo_table_mb = load_single_value_from_summary(
-    MONGO_INSERT_SUMMARY, "mean_table_total_after_mb"
-)
-mongo_db_mb = load_single_value_from_summary(
-    MONGO_INSERT_SUMMARY, "mean_db_size_after_mb"
-)
-
-print("\n==============================")
-print("STORAGE SIZE COMPARISON (MB)")
-print("==============================")
-print(f"{'Engine':<15} | {'Table/Collection':>18} | {'Database':>10}")
-print("-" * 52)
-print(f"{'PostgreSQL':<15} | {pg_table_mb:>18.2f} | {pg_db_mb:>10.2f}")
-print(f"{'MongoDB':<15} | {mongo_table_mb:>18.2f} | {mongo_db_mb:>10.2f}")
-print("==============================\n")
-
-print("Generated PDF files:")
-print(" - boxplot_insert_throughput.pdf")
-print(" - boxplot_aggregation_latency.pdf")
-print(" - boxplot_driver_latency.pdf")
+print("Generated plots!")

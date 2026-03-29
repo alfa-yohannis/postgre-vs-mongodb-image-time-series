@@ -14,9 +14,9 @@ import psycopg2
 DB_CONFIG = {
     "dbname": "iot_ts",
     "user": "postgres",
-    "password": "1234",   # adjust if needed
-    "host": "localhost",
-    "port": 5432,
+    "password": "postgres",
+    "host": "127.0.0.1",
+    "port": 55432,
 }
 
 ENGINE_NAME = "postgres+psycopg2-driver"

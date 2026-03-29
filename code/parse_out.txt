@@ -1,0 +1,26 @@
+Key mean_throughput_rows_per_sec not found in results_postgres_insert_summary_1080p_fhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_postgres_insert_summary_1440p_qhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_postgres_insert_summary_4k_uhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_postgres_insert_summary_5k_image.csv
+Key mean_throughput_rows_per_sec not found in results_postgres_insert_summary_6k_image.csv
+Key mean_throughput_rows_per_sec not found in results_mongo_insert_summary_1080p_fhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_mongo_insert_summary_1440p_qhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_mongo_insert_summary_4k_uhd_image.csv
+Key mean_throughput_rows_per_sec not found in results_mongo_insert_summary_5k_image.csv
+Key mean_throughput_rows_per_sec not found in results_mongo_insert_summary_6k_image.csv
+Key disk_size_mb not found in results_postgres_insert_summary_1080p_fhd_image.csv
+Key disk_size_mb not found in results_postgres_insert_summary_1440p_qhd_image.csv
+Key disk_size_mb not found in results_postgres_insert_summary_4k_uhd_image.csv
+Key disk_size_mb not found in results_postgres_insert_summary_5k_image.csv
+Key disk_size_mb not found in results_postgres_insert_summary_6k_image.csv
+Key disk_size_mb not found in results_mongo_insert_summary_1080p_fhd_image.csv
+Key disk_size_mb not found in results_mongo_insert_summary_1440p_qhd_image.csv
+Key disk_size_mb not found in results_mongo_insert_summary_4k_uhd_image.csv
+Key disk_size_mb not found in results_mongo_insert_summary_5k_image.csv
+Key disk_size_mb not found in results_mongo_insert_summary_6k_image.csv
+Res | PG Ins | MG Ins | PG Ret | MG Ret | PG_Disk | MG_Disk
+1080p_fhd_image | 0.00 | 0.00 | 1586.70 | 259.04 | 0.00 | 0.00
+1440p_qhd_image | 0.00 | 0.00 | 2284.49 | 637.89 | 0.00 | 0.00
+4k_uhd_image | 0.00 | 0.00 | 2788.14 | 1841.58 | 0.00 | 0.00
+5k_image | 0.00 | 0.00 | 5460.58 | 2618.81 | 0.00 | 0.00
+6k_image | 0.00 | 0.00 | 8219.30 | 0.00 | 0.00 | 0.00

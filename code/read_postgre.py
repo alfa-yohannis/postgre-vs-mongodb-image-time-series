@@ -1,48 +1,55 @@
-# read_back_one.py
-from io import BytesIO
+from __future__ import annotations
+
+from pathlib import Path
 
 import psycopg2
 from PIL import Image
+from io import BytesIO
 
-DB_CONFIG = {
-    "dbname": "iot_ts",
-    "user": "postgres",
-    "password": "1234",  # fill if needed
-    "host": "localhost",
-    "port": 5432,
-}
+from benchmark_config import load_settings
 
 
-def main():
-    conn = psycopg2.connect(**DB_CONFIG)
-    cur = conn.cursor()
+def suffix_for_mime(mime_type: str) -> str:
+    return {
+        "image/jpeg": ".jpg",
+        "video/mp4": ".mp4",
+    }.get(mime_type, ".bin")
 
-    cur.execute(
-        """
-        SELECT id, device_id, ts, frame_data, mime_type
-        FROM sensor_frames
-        ORDER BY ts DESC
-        LIMIT 1
-        """
-    )
 
-    row = cur.fetchone()
+def main() -> None:
+    settings = load_settings()
+
+    conn = psycopg2.connect(**settings.postgres_config)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT ts, payload_data, payload_size_bytes, mime_type
+                FROM {settings.postgres_table_name}
+                WHERE device_id = %s
+                ORDER BY ts DESC
+                LIMIT 1
+                """,
+                (settings.device_id,),
+            )
+            row = cur.fetchone()
+    finally:
+        conn.close()
+
     if not row:
-        print("No rows in sensor_frames")
+        print("No rows found in PostgreSQL benchmark table.")
         return
 
-    row_id, device_id, ts, frame_bytes, mime_type = row
-    print("Read row:", row_id, device_id, ts, mime_type)
+    ts, payload_data, payload_size_bytes, mime_type = row
+    output_path = Path(f"restored_payload_postgre{suffix_for_mime(mime_type)}")
+    output_path.write_bytes(payload_data)
 
-    img = Image.open(BytesIO(frame_bytes))
-    print("Image size:", img.size)
+    print(f"Retrieved sample from {ts} ({payload_size_bytes} bytes, {mime_type})")
+    print(f"Saved payload to {output_path}")
 
-    out_path = "restored_frame_postgre.jpg"
-    img.save(out_path)
-    print("Saved to", out_path)
-
-    cur.close()
-    conn.close()
+    if mime_type.startswith("image/"):
+        img = Image.open(BytesIO(payload_data))
+        print(f"Decoded image size: {img.size}")
 
 
 if __name__ == "__main__":
