@@ -1,0 +1,308 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+
+\usepackage{graphicx}
+\usepackage{subcaption}
+
+\usepackage[draft,hidelinks,bookmarks=false,bookmarksdepth=0]{hyperref}
+\usepackage{xurl}
+
+
+\usepackage{listings}
+\lstdefinelanguage{bash} {
+	keywords={},
+	basicstyle=\ttfamily\small,
+	keywordstyle=\color{blue}\bfseries,
+	ndkeywords={},
+	ndkeywordstyle=\color{purple}\bfseries,
+	sensitive=true,
+	numberstyle=\tiny\color{gray},
+	breaklines=true,
+	frame=lines,
+	backgroundcolor=\color{lightgray!10},
+	tabsize=2,
+	comment=[l]{\#},
+	morecomment=[s]{/*}{*/},
+	commentstyle=\color{gray}\ttfamily,
+	stringstyle=\color{purple}\ttfamily,
+	showstringspaces=false,
+	morestring=[s]{"}{"}
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{Relational vs Hybrid Object-Relational Storage for Image-Based Time-Series Workloads}
+
+\author{
+[Hidden for double-blind review]
+}
+
+
+\maketitle
+
+\begin{abstract}
+This paper presents a systematic performance comparison of two storage architectures for image-based time-series workloads in IoT and consumer electronics (CE) systems: (1)~PostgreSQL with TimescaleDB using inline BYTEA storage (PG), and (2)~PostgreSQL with TimescaleDB externalizing binary payloads to MinIO object storage (PM). Using isolated Dockerized deployments, we benchmarked both architectures across five image resolutions---480p ($\sim$0.33~MB), 720p ($\sim$0.60~MB), 1080p ($\sim$1.09~MB), 1440p ($\sim$1.66~MB), and 4K~UHD ($\sim$3.07~MB). Results show that PM consistently outperforms PG for insertion throughput at every resolution tested: PM achieves $1.7\times$ higher throughput at 480p (154.76 vs.\ 89.11 rows/s) and $2.3\times$ at 4K (20.86 vs.\ 8.92 rows/s). For binary retrieval, PM holds an even larger advantage: MinIO retrieval latency remains low ($\sim$2--7~ms) while PG retrieval grows proportionally with payload size (7~ms at 480p to 53~ms at 4K). Storage amplification is near-optimal ($1.00\times$) for PM versus $1.04\times$ for PG. These findings establish that externalizing binary payloads to object storage eliminates BYTEA performance penalties across all resolutions and dramatically improves both ingestion and retrieval throughput.
+\end{abstract}
+
+\begin{IEEEkeywords}
+time-series databases, image-based IoT, PostgreSQL, TimescaleDB, MinIO, object storage, benchmarking
+\end{IEEEkeywords}
+
+\section{Introduction}
+\label{sec:introduction}
+
+The rapid proliferation of consumer electronics (CE) and Internet of Things (IoT) edge devices equipped with embedded vision capabilities has generated unprecedented volumes of image-based time-series data~\cite{ieee_ce_definition}. CE payloads---the binary data produced by consumer-grade imaging hardware such as security cameras, smart doorbells, and medical monitors---increasingly consist of high-resolution frames that must be stored alongside timestamped metadata~\cite{intuz_iot_databases,ceec_tsdb_review}. These systems place significant stress on database management systems for stable high-throughput ingestion and fast binary retrieval~\cite{jensen_tsms_survey,nerc_tsdb_survey}.
+
+While purpose-built time-series database management systems (TSDBMSs) exist~\cite{dewaal_timeseries_survey,tigerdata_tsdb_compare}, many organizations prefer to maximize existing general-purpose databases---particularly PostgreSQL~\cite{postgresql_official}---which already power their operational stacks. A common production pattern separates binary payload storage from structured metadata by offloading large objects to S3-compatible object stores such as MinIO~\cite{minio_official} or Amazon S3~\cite{aws_s3_official}, while the database retains only lightweight references and queryable metadata.
+
+However, existing benchmarking studies---such as TSBS~\cite{tsbs}---primarily target small numerical scalar events of a few bytes each~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval}. No study systematically evaluates the resolution-dependent performance boundaries when databases must handle multi-megabyte CE image payloads, nor quantifies the benefit of externalizing payloads to object storage for \emph{binary retrieval} workloads.
+
+This study addresses the following research questions:
+\begin{itemize}
+    \item \textbf{RQ1:} How do inline BYTEA storage (PG) and externalized MinIO storage (PM) compare in insertion throughput across varying image resolutions?
+    \item \textbf{RQ2:} How does binary image retrieval latency scale with payload resolution for each architecture?
+    \item \textbf{RQ3:} What are the storage efficiency implications of inline versus externalized payload storage?
+\end{itemize}
+
+To answer these questions, we benchmark both architectures across five image resolutions from 480p to 4K~UHD inside Docker containers, systematically evaluating ingestion throughput, retrieval latency, driver overhead, and storage amplification.
+
+\section{Related Work}
+\label{sec:related_work}
+
+Time-series databases optimize sequential data ingestion by employing append-only storage, time-based partitioning, and columnar compression to bypass the write amplification inherent in traditional B-Tree indexes~\cite{dewaal_timeseries_survey,jensen_tsms_survey}. TimescaleDB~\cite{timescaledb_official} extends PostgreSQL~\cite{postgresql_official} with transparent hypertable chunking that sustains flat ingestion throughput at scale~\cite{dewaal_timeseries_survey,nerc_tsdb_survey}. MongoDB~\cite{mongodb_official} introduced native Time-Series Collections in version 5.0, which internally bucket measurements into compacted documents optimized for columnar access patterns~\cite{tigerdata_mongodb_timescaledb,maddevs_timescaledb_beats_pg}.
+
+Existing comparative benchmarks between relational and document stores are limited to lightweight scalar payloads. The TSBS suite~\cite{tsbs} generates synthetic JSON/SQL events of a few bytes each. The Dalarna University evaluation~\cite{diva_timescaledb_mongodb_eval} compared TimescaleDB and MongoDB query execution times using numerical sensor data. CrateDB's benchmark~\cite{cratedb_ts_benchmark} focused on aggregate throughput over numeric IoT metrics. None of these studies incorporate binary payloads exceeding a few kilobytes, nor evaluate the impact of externalizing payloads to object storage on retrieval performance.
+
+This gap is significant because storage engine behavior changes fundamentally with payload size. PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism stores oversized attributes out-of-line, but still within the database's transactional boundary, requiring full deserialization on retrieval. Object stores like MinIO~\cite{minio_official} offer an alternative: storing binary data outside the database entirely, leaving only a lightweight reference key. This separation decouples metadata query performance from payload size, potentially yielding faster retrieval at high resolutions via direct HTTP streaming.
+
+Our work directly addresses this gap by conducting the first systematic two-way benchmark comparing inline database BYTEA storage with externalized MinIO object storage across five image resolutions, with emphasis on both insertion throughput and binary retrieval latency.
+
+
+\section{Methodology}
+\label{sec:methodology}
+
+This study benchmarks two storage architectures under identical containerized conditions using Docker~\cite{docker_official}: (1)~PostgreSQL with TimescaleDB~\cite{timescaledb_official} storing payloads inline as BYTEA (PG), and (2)~PostgreSQL with TimescaleDB storing metadata with a MinIO~\cite{minio_official} object key while externalizing binaries (PM).
+
+\subsection{Environment and Configuration}
+All experiments run on a single machine equipped with an Intel Core i7-1165G7 (4 cores / 8 threads, 2.80~GHz), 16~GB DDR4 RAM, and a Samsung 512~GB NVMe SSD, running Ubuntu 24.04 LTS (kernel 6.8). The benchmark harness is written in Python~3.12 using \texttt{psycopg2}~2.9 and \texttt{minio}~7.2. Docker~29.3 with Compose~5.1 manages the containers: PostgreSQL~15.13 with TimescaleDB (default shared buffers) and MinIO RELEASE.2025-09-07. Both containers share the host resources on the same Docker bridge network, ensuring consistent and minimal inter-container latency. Each service runs in its own container for isolation.
+
+\subsection{Payload Configuration}
+The benchmark evaluates five progressively increasing image resolutions: 480p ($854{\times}480$, $\sim$0.33~MB), 720p ($1280{\times}720$, $\sim$0.60~MB), 1080p ($1920{\times}1080$, $\sim$1.09~MB), 1440p ($2560{\times}1440$, $\sim$1.66~MB), and 4K~UHD ($3840{\times}2160$, $\sim$3.07~MB). All payloads use quality-100 JPEG encoding to ensure high visual entropy. Each frame includes timestamped metadata: device identifiers, capture dimensions, and codec parameters.
+
+\subsection{Database Schema Design}
+\textbf{Architecture~1: PG---PostgreSQL BYTEA.} The hypertable stores each frame with a \texttt{BYTEA} column for the binary payload, managed transparently by TOAST~\cite{postgresql_toast_docs}, as shown in Listing~\ref{lst:pg_schema}:
+
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\scriptsize,breaklines=true,caption={PG schema: inline BYTEA storage.},label={lst:pg_schema}]
+CREATE TABLE sensor_media (
+  sample_id  BIGSERIAL NOT NULL,
+  device_id  BIGINT NOT NULL,
+  ts         TIMESTAMPTZ NOT NULL,
+  payload_data   BYTEA NOT NULL,
+  payload_size_bytes INTEGER NOT NULL,
+  ...
+  PRIMARY KEY (ts, sample_id)
+);
+SELECT create_hypertable('sensor_media',
+  by_range('ts'));
+\end{lstlisting}
+
+\textbf{Architecture~2: PM---PostgreSQL+MinIO.} The hypertable stores only metadata and a MinIO object key; the binary payload is uploaded to MinIO via HTTP PUT, as shown in Listing~\ref{lst:pg_minio_schema}:
+
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\scriptsize,breaklines=true,caption={PM schema: externalized MinIO storage.},label={lst:pg_minio_schema}]
+CREATE TABLE sensor_media_minio (
+  sample_id  BIGSERIAL NOT NULL,
+  device_id  BIGINT NOT NULL,
+  ts         TIMESTAMPTZ NOT NULL,
+  minio_object_key TEXT NOT NULL,
+  payload_size_bytes INTEGER NOT NULL,
+  ...
+  PRIMARY KEY (ts, sample_id)
+);
+SELECT create_hypertable('sensor_media_minio',
+  by_range('ts'));
+\end{lstlisting}
+
+Both schemas use a compound secondary index on \texttt{(device\_id, ts DESC)}.
+
+\subsection{Experiment Design}
+For each of the five resolutions, the benchmark executes independently with 5 runs per metric. Each engine is wiped and rebuilt before each resolution. A 100-record warm-up phase pre-loads memory. The insertion benchmark commits 1000 records in batches of 50 per run.
+
+For the PM architecture, each insert includes the MinIO \texttt{put\_object} HTTP PUT call within the timed region, ensuring the measurement captures the full end-to-end write cost. Similarly, binary retrieval includes both the metadata query (SELECT on PostgreSQL) and the subsequent \texttt{get\_object} HTTP GET from MinIO.
+
+For PG, retrieval fetches the binary payload directly via \texttt{SELECT \ldots payload\_data} and reads the BYTEA column, as governed by TOAST. For PM, retrieval first queries the metadata to obtain the object key, then streams the binary via MinIO HTTP GET.
+
+Driver overhead is measured via direct client-server ping roundtrips (30 iterations) for each service independently: PostgreSQL (\texttt{SELECT 1}) and MinIO (\texttt{list\_buckets}).
+
+
+\begin{table}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\caption{Insert Throughput (rows/s) --- PG vs.\ PM}
+\label{tab:insert_summary}
+\begin{tabular}{l r r}
+\hline
+\textbf{Res.} & \textbf{PG} & \textbf{PM} \\
+ & (rows/s) & (rows/s) \\
+\hline
+480p  & 89.11 & \textbf{154.76} \\
+720p  & 34.17 & \textbf{63.89} \\
+1080p & 25.56 & \textbf{49.50} \\
+1440p & 14.45 & \textbf{31.37} \\
+4K    & 8.92  & \textbf{20.86} \\
+\hline
+\multicolumn{3}{l}{\footnotesize PG = PostgreSQL+TimescaleDB (inline BYTEA).} \\
+\multicolumn{3}{l}{\footnotesize PM = PostgreSQL+TimescaleDB+MinIO (externalized).} \\
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\caption{Binary Retrieval Latency (ms) --- PG vs.\ PM}
+\label{tab:retrieval_summary}
+\begin{tabular}{l r r}
+\hline
+\textbf{Res.} & \textbf{PG} & \textbf{PM} \\
+ & (ms) & (ms) \\
+\hline
+480p  & 7.46  & \textbf{3.54} \\
+720p  & 10.50 & \textbf{3.54} \\
+1080p & 19.38 & \textbf{1.87} \\
+1440p & 29.78 & \textbf{5.49} \\
+4K    & 52.94 & \textbf{7.06} \\
+\hline
+\multicolumn{3}{l}{\footnotesize PG = PostgreSQL+TimescaleDB (inline BYTEA).} \\
+\multicolumn{3}{l}{\footnotesize PM = PostgreSQL+TimescaleDB+MinIO (externalized).} \\
+\end{tabular}
+\end{table}
+
+\begin{table}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.15}
+\caption{Storage Amplification and Disk Usage (1000 rows)}
+\label{tab:storage_summary}
+\begin{tabular}{@{} l r r r r @{}}
+\hline
+\textbf{Res.} & \textbf{PG (MB)} & \textbf{PM (MB)} & \textbf{PG Amp} & \textbf{PM Amp} \\
+\hline
+480p  & 348  & 334  & 1.04 & 1.00 \\
+720p  & 622  & 600  & 1.04 & 1.00 \\
+1080p & 1127 & 1086 & 1.04 & 1.00 \\
+1440p & 1726 & 1663 & 1.04 & 1.00 \\
+4K    & 3192 & 3075 & 1.04 & 1.00 \\
+\hline
+\multicolumn{5}{@{}l}{\footnotesize PG = PostgreSQL+TimescaleDB (inline BYTEA).} \\
+\multicolumn{5}{@{}l}{\footnotesize PM = PostgreSQL+TimescaleDB+MinIO (externalized).} \\
+\end{tabular}
+\end{table}
+
+
+\section{Results}
+\label{sec:results}
+
+The multi-resolution results, summarized in Tables~\ref{tab:insert_summary}--\ref{tab:storage_summary}, reveal distinct performance regimes for insertion and retrieval. Figures~\ref{fig:insert_throughput} and~\ref{fig:retrieval_latency} visualize the scaling trends across resolutions.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/boxplot_insert_throughput.pdf}
+\caption{Insert throughput scaling from 480p to 4K (RQ1). PM outperforms PG at every resolution, with the advantage widening at higher resolutions.}
+\label{fig:insert_throughput}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/boxplot_retrieval_latency.pdf}
+\caption{Binary retrieval latency scaling from 480p to 4K (RQ2). PM retrieval remains nearly flat; PG latency grows proportionally with payload size.}
+\label{fig:retrieval_latency}
+\end{figure}
+
+\subsection{Ingestion Throughput (RQ1)}
+\label{subsec:insert_throughput}
+As shown in Figure~\ref{fig:insert_throughput} and Table~\ref{tab:insert_summary}, PM consistently outperforms PG for insertion throughput at every resolution tested. At 480p, PM achieves 154.76 rows/s---$1.7\times$ faster than PG (89.11 rows/s). This advantage persists and widens as payload size increases: at 720p, PM (63.89 rows/s) is $1.9\times$ faster than PG (34.17 rows/s); at 1080p, PM (49.50 rows/s) is $1.9\times$ faster than PG (25.56 rows/s); and at 4K, PM achieves $2.3\times$ the throughput of PG (20.86 vs.\ 8.92 rows/s), as shown in Table~\ref{tab:insert_summary}.
+
+This consistent advantage reflects the architectural difference in write paths: MinIO's write path is a direct HTTP PUT to the filesystem with no transactional overhead, journaling, or TOAST page management, while PostgreSQL's WAL-protected transactional write path must manage increasingly large BYTEA values through TOAST. As payload size grows, the overhead of TOAST page management and write-ahead logging increases, widening PM's advantage.
+
+Relating these throughputs to real-time frame rates (Figure~\ref{fig:insert_throughput}, dashed lines): at 480p, PM sustains 155~rows/s---well above a 60~fps ingest target---while PG (89~rows/s) also exceeds 60~fps. At 720p, PM (64~rows/s) still exceeds 60~fps while PG (34~rows/s) exceeds 30~fps. Beyond 1080p, neither architecture sustains real-time 60~fps ingest: at 4K, the best throughput (PM, 20.86~rows/s) corresponds to roughly 21~fps. These results indicate that real-time 30~fps capture is feasible up to 720p with PG and up to 1080p with PM, but 4K resolution requires frame decimation, buffered ingestion, or horizontal scaling.
+
+\subsection{Binary Retrieval Latency (RQ2)}
+\label{subsec:retrieval_latency}
+Binary retrieval latency (Figure~\ref{fig:retrieval_latency}, Table~\ref{tab:retrieval_summary}) shows a striking divergence between the two architectures. PG retrieval latency grows proportionally with payload size: 7.46~ms at 480p, 10.50~ms at 720p, 19.38~ms at 1080p, rising to 29.78~ms at 1440p and 52.94~ms at 4K. This linear growth reflects the cost of deserializing and transmitting large BYTEA objects through PostgreSQL's wire protocol.
+
+PM retrieval latency remains low across all resolutions: 3.54~ms at 480p, 3.54~ms at 720p, 1.87~ms at 1080p, 5.49~ms at 1440p, and 7.06~ms at 4K. The PM two-step retrieval (metadata SELECT then MinIO HTTP GET) benefits from MinIO's optimized streaming, which bypasses the TOAST decompression and protocol framing overhead inherent in BYTEA retrieval. At 4K, PM retrieval (7.06~ms) is $7.5\times$ faster than PG (52.94~ms).
+
+This is a significant finding: externalizing payloads to MinIO does not merely preserve retrieval performance---it actively improves it at every resolution tested. MinIO streams objects via HTTP directly, bypassing the TOAST decompression and PostgreSQL protocol framing required for BYTEA retrieval.
+
+In terms of frame-rate budgets (Figure~\ref{fig:retrieval_latency}, dashed lines): at 30~fps each frame must be retrieved within 33.3~ms, and at 60~fps within 16.7~ms. PM comfortably meets the 60~fps budget at all resolutions (maximum 7.06~ms at 4K). PG meets the 60~fps budget only up to 720p (10.50~ms); at 1080p (19.38~ms) it exceeds the 60~fps threshold, and at 4K (52.94~ms) it also exceeds the 30~fps budget. Thus, PM is the only architecture capable of supporting real-time 4K playback from storage.
+
+\subsection{Driver Overhead}
+\label{subsec:driver_overhead}
+Driver roundtrip latency averages 0.20~ms for PostgreSQL and 1.25~ms for MinIO. The MinIO overhead is $6.3\times$ higher than PostgreSQL's due to HTTP/REST protocol overhead versus PostgreSQL's binary wire protocol. Despite this per-request overhead, PM still achieves higher insertion throughput at all resolutions, indicating that the MinIO HTTP cost is more than offset by avoiding PostgreSQL's TOAST and WAL overhead for binary payloads.
+
+
+\subsection{Storage Efficiency (RQ3)}
+\label{subsec:storage_size}
+As detailed in Table~\ref{tab:storage_summary}, PM achieves near-optimal storage amplification of $1.00\times$ across all resolutions. MinIO stores objects as raw files with negligible overhead. PG maintains a stable $1.04\times$ amplification due to TOAST table overhead and page alignment.
+
+The $\sim$4\% overhead of PG translates to meaningful absolute differences at high resolutions: at 4K, PG consumes 3,192~MB versus 3,075~MB for PM, a 117~MB difference per 1000 records.
+
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Consistent PM Advantage Across All Resolutions}
+Unlike prior expectations of a crossover point where PG would dominate at small payloads, our results show that PM outperforms PG for insertion throughput at every resolution tested---from 480p ($1.7\times$ faster) through 4K ($2.3\times$ faster). The MinIO HTTP PUT overhead ($\sim$1.25~ms per roundtrip) is consistently outweighed by the cost of PostgreSQL's TOAST page management, write-ahead logging, and transactional overhead, even for sub-megabyte payloads. This indicates that the overhead of WAL-protected BYTEA writes is substantial even at 480p ($\sim$0.33~MB).
+
+For retrieval, PM's advantage is even more pronounced: PM outperforms PG at every resolution tested. Even at 480p, PM retrieval (3.54~ms) is faster than PG (7.46~ms). At 4K, PM is $7.5\times$ faster. This indicates that MinIO's HTTP streaming path is fundamentally more efficient than PostgreSQL's BYTEA retrieval path, bypassing the protocol framing and TOAST decompression steps required by PG.
+
+\subsection{Implications for System Design}
+Based on these findings, we offer the following architectural guidelines:
+\begin{itemize}
+    \item \textbf{All resolutions (480p--4K):} PM is recommended for both insertion and retrieval workloads. PM delivers $1.7$--$2.3\times$ higher insertion throughput and $2$--$7.5\times$ faster retrieval than PG across all tested resolutions.
+    \item \textbf{High-resolution workloads (1080p--4K):} PM's advantage is most pronounced, with insertion throughput nearly $2\times$ that of PG and retrieval up to $7.5\times$ faster at 4K.
+    \item \textbf{Operational simplicity as primary concern:} PG BYTEA remains a viable option where single-service simplicity outweighs the performance benefits of PM, particularly for low-resolution workloads where the absolute performance difference is smaller.
+    \item \textbf{Storage efficiency:} PM's $1.00\times$ amplification versus PG's $1.04\times$ yields meaningful savings at scale (117~MB/1000~records at 4K).
+\end{itemize}
+
+\subsection{Operational Trade-offs}
+The PM architecture introduces operational complexity that must be weighed against its performance advantages. First, PM requires managing two independent services (PostgreSQL and MinIO), each with its own backup, monitoring, and failure modes. A MinIO failure renders stored images inaccessible even though metadata remains queryable, necessitating coordinated backup strategies. In contrast, PG stores everything within a single transactional boundary, simplifying disaster recovery.
+
+Second, PM's two-step write (database INSERT plus MinIO PUT) is not atomic by default: a crash between the two operations can leave orphaned metadata rows without corresponding objects, or orphaned objects without metadata. Production deployments must implement compensation logic---such as periodic garbage collection of orphaned MinIO objects---or use application-level sagas to maintain consistency.
+
+Despite these trade-offs, PM's $7.5\times$ retrieval speedup at 4K and consistent $1.7$--$2.3\times$ insertion throughput advantage across all resolutions make it the clear choice for image-based time-series workloads regardless of payload size.
+
+\subsection{Threats to Validity}
+Several factors may affect generalizability. First, all experiments run on a single host; distributed deployments may differ. Second, payloads use synthetic JPEG images; real camera feeds may vary in entropy and compressibility. Third, MinIO runs on the same Docker bridge network as the database; production deployments with network latency would increase PM's per-request overhead, potentially narrowing its advantage at smaller payload sizes. Fourth, the fixed batch size of 50 may not reflect all ingestion patterns. Fifth, concurrent multi-client access was not tested; under contention, PostgreSQL's lock management for large BYTEA writes may degrade differently than MinIO's lock-free object writes.
+
+\subsection{Future Work}
+Several directions merit investigation. First, extending the benchmark to distributed multi-node deployments would test whether PM's advantages persist when MinIO objects are replicated across nodes with erasure coding. Second, evaluating PostgreSQL large-object (LO) storage as a third architecture---using \texttt{lo\_import}/\texttt{lo\_export} instead of BYTEA---would determine whether LO's streaming interface narrows the retrieval gap with MinIO. Third, concurrent multi-client benchmarks would reveal how each architecture scales under realistic multi-camera ingestion loads. Finally, incorporating GPU-accelerated image analytics pipelines downstream of retrieval would test whether PM's lower retrieval latency translates into measurable end-to-end processing gains for real-time inference workloads such as object detection or anomaly recognition on surveillance feeds.
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+This study systematically benchmarked two storage architectures for image-based time-series workloads across five resolutions from 480p to 4K~UHD inside containerized environments, addressing three research questions on insertion throughput, retrieval latency, and storage efficiency.
+
+\textbf{RQ1 (Insertion Throughput):} PM outperforms PG at every resolution tested, achieving $1.7\times$ higher throughput at 480p (154.76 vs.\ 89.11 rows/s) and $2.3\times$ at 4K (20.86 vs.\ 8.92 rows/s). The advantage widens with resolution, driven by the growing cost of WAL-protected TOAST writes relative to MinIO's efficient HTTP PUT path.
+
+\textbf{RQ2 (Binary Retrieval Latency):} PM delivers low retrieval latency ($\sim$2--7~ms) across all resolutions via MinIO HTTP streaming. PG retrieval grows proportionally with payload size, reaching 52.94~ms at 4K---$7.5\times$ slower than PM. PM outperforms PG for retrieval at every resolution tested, including sub-megabyte payloads, making it the only architecture capable of sustaining real-time 4K playback within a 30~fps frame budget.
+
+\textbf{RQ3 (Storage Efficiency):} PM achieves near-optimal $1.00\times$ storage amplification versus $1.04\times$ for PG, with MinIO storing raw objects without database page overhead. At 4K, this translates to a 117~MB saving per 1000 records.
+
+The key finding is that externalizing binary payloads to object storage---even within the same Docker network as the database---provides consistent and significant performance advantages for both ingestion and binary retrieval at all resolutions. The performance gap widens with resolution: at 4K, PM achieves $2.3\times$ the insertion throughput and $7.5\times$ faster retrieval than PG, while maintaining near-optimal storage efficiency. For IoT and CE vision systems handling image payloads at any resolution, PM is the recommended architecture on both throughput and latency grounds. PG BYTEA remains a viable alternative only where operational simplicity of a single-service architecture outweighs the performance benefits, as the single-service design avoids the consistency and backup coordination challenges inherent in the two-service PM design.
+
+
+\section*{Acknowledgment}
+[Hidden for double-blind review]
+
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

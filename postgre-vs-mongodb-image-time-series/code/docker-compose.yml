@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: iot-benchmark-postgres
+    environment:
+      POSTGRES_DB: iot_ts
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "55432:5432"
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=100"]
+
+  mongodb:
+    image: mongo:7.0
+    container_name: iot-benchmark-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+      MONGO_INITDB_DATABASE: iot_ts
+    ports:
+      - "57017:27017"
+    restart: unless-stopped
+    command: ["--wiredTigerCacheSizeGB", "2"]
