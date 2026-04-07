@@ -51,7 +51,7 @@
 \maketitle
 
 \begin{abstract}
-This paper presents a systematic performance comparison between Relational Storage (PostgreSQL with TimescaleDB) and Document-Oriented Storage (MongoDB) for image-based time-series workloads in consumer electronics and embedded IoT systems. Using isolated Dockerized deployments, we benchmarked both systems across five progressively increasing image resolutions---1080p ($\sim$1.09~MB), 1440p ($\sim$1.66~MB), 4K~UHD ($\sim$3.07~MB), 5K ($\sim$4.83~MB), and 6K ($\sim$6.45~MB)---to identify the precise payload size at which architectural trade-offs invert. Results reveal that MongoDB outperforms PostgreSQL for small payloads (133.2 vs.\ 22.0 rows/s at 1080p), but a critical crossover occurs between 1440p and 4K: at 4K, PostgreSQL achieves 8.4 rows/s versus MongoDB's 4.6 rows/s. MongoDB encountered processing failures at 6K due to cache pressure and document limits. Additionally, binary retrieval latency shows MongoDB leading at low resolutions ($6.1\times$ faster at 1080p) before decaying and failing at 6K. Storage amplification on MongoDB escalates from $0.12\times$ at 1080p to $3.08\times$ at 4K, whereas PostgreSQL remains constant at $1.04\times$. These findings establish resolution-dependent architectural guidelines for IoT vision pipeline design.
+This paper presents a systematic performance comparison between Relational Storage (PostgreSQL with TimescaleDB) and Document-Oriented Storage (MongoDB) for image-based time-series workloads in consumer electronics and embedded IoT systems. Using isolated Dockerized deployments, we benchmarked both systems across five progressively increasing image resolutions---1080p ($\sim$1.09~MB), 1440p ($\sim$1.66~MB), 4K~UHD ($\sim$3.07~MB), 5K ($\sim$4.83~MB), and 6K ($\sim$6.45~MB)---to identify the precise payload size at which architectural trade-offs invert. Results reveal that MongoDB outperforms PostgreSQL for small payloads (329.5 vs.\ 92.3 rows/s at 1080p), but a critical crossover occurs between 1440p and 4K: at 4K, PostgreSQL achieves 23.0 rows/s versus MongoDB's 17.8 rows/s. MongoDB encountered query failure timeouts at 6K due to cache pressure and bulk memory limits. Additionally, binary retrieval latency shows MongoDB consistently retrieving binaries faster than PostgreSQL up to 5K resolution before suffering catastrophic engine failure at 6K. Storage amplification on MongoDB escalates from $0.10\times$ at 1080p to $3.00\times$ at 5K, whereas PostgreSQL remains constant at $1.04\times$. These findings establish resolution-dependent architectural guidelines for IoT vision pipeline design.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -94,7 +94,7 @@ Our work directly addresses this gap by conducting a systematic multi-resolution
 This study benchmarks PostgreSQL~\cite{postgresql_official} with TimescaleDB~\cite{timescaledb_official} against MongoDB~\cite{mongodb_official} with native Time-Series Collections under identical containerized conditions using Docker~\cite{docker_official}.
 
 \subsection{Environment and Configuration}
-All experiments run on Docker containers sharing the host resources. PostgreSQL~15 with TimescaleDB runs with default shared buffers. MongoDB~7.0 runs with \texttt{--wiredTigerCacheSizeGB~2}, which represents a realistic 2~GB WiredTiger cache---comparable to what MongoDB would auto-configure on a typical IoT gateway with 4--8~GB RAM. This deliberate constraint reflects production container deployments where memory budgets are bounded. PostgreSQL operates under equivalent memory constraints through OS-level caching.
+All experiments run on Docker containers sharing the host resources on an Intel(R) Core(TM) i9-11900H CPU @ 2.50GHz with 31~GB RAM running Ubuntu Linux. PostgreSQL~15 with TimescaleDB runs with default shared buffers. MongoDB~7.0 runs with \texttt{--wiredTigerCacheSizeGB~2}, which represents a realistic 2~GB WiredTiger cache---comparable to what MongoDB would auto-configure on a typical IoT gateway with 4--8~GB RAM. This deliberate constraint reflects production container deployments where memory budgets are bounded. PostgreSQL operates under equivalent memory constraints through OS-level caching.
 
 \subsection{Payload Configuration}
 The benchmark evaluates five progressively increasing image resolutions: 1080p ($1920{\times}1080$, $\sim$1.09~MB), 1440p ($2560{\times}1440$, $\sim$1.66~MB), 4K~UHD ($3840{\times}2160$, $\sim$3.07~MB), 5K ($5120{\times}2880$, $\sim$4.83~MB), and 6K ($6144{\times}3456$, $\sim$6.45~MB). All payloads use quality-100 JPEG encoding to ensure high visual entropy that defeats internal database compression. Each frame includes timestamped metadata: device identifiers, capture dimensions, and codec parameters.
@@ -141,7 +141,7 @@ The MongoDB time-series collection (Listing~\ref{lst:mg_schema}) stores function
 The collection is created with \texttt{timeseries: \{timeField: "ts", metaField: "meta", granularity: "seconds"\}}, enabling WiredTiger~\cite{mongodb_wiredtiger_storage} to bucket measurements into columnar arrays~\cite{mongodb_ts_best_practices}. Snappy~\cite{google_snappy} block compression is applied on disk. Both schemas use a compound secondary index on \texttt{(device\_id, ts DESC)} for temporal range queries.
 
 \subsection{Experiment Design}
-For each of the five resolutions, the complete benchmark suite executes independently with 5 runs per metric. Each engine is wiped and rebuilt before each resolution. A 10-record warm-up phase pre-loads memory. The insertion benchmark commits 100 records in batches of 50 per run.
+For each of the five resolutions, the complete benchmark suite executes independently with 5 runs per metric. Each engine is wiped and rebuilt before each resolution. A 100-record warm-up phase pre-loads memory. The insertion benchmark commits 2000 records in batches of 50 per run.
 
 The PostgreSQL insert uses \texttt{execute\_batch()} with parameterized \texttt{INSERT INTO} statements targeting the schema in Listing~\ref{lst:pg_schema}. The MongoDB insert uses \texttt{insert\_many()} with \texttt{ordered=False} for maximum throughput using the document structure in Listing~\ref{lst:mg_schema}.
 
@@ -165,18 +165,18 @@ Driver overhead is measured via direct client-server ping roundtrips (30 iterati
 \begin{table}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Insert Throughput and Binary Payload Retrieval Latency (100 rows)}
+\caption{Insert Throughput (2000 rows) and Binary Payload Retrieval Latency (100 rows)}
 \label{tab:performance_summary}
 \begin{tabular}{l r r r r}
 \hline
 \textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Retrieval (ms)}} \\
  & \textbf{PostgreSQL} & \textbf{MongoDB} & \textbf{PostgreSQL} & \textbf{MongoDB} \\
 \hline
-1080p & 22.0  & \textbf{133.2} & 1587   & \textbf{259}   \\
-1440p & 19.1  & \textbf{21.3}  & 2284   & \textbf{638}   \\
-4K    & \textbf{8.4}   & 4.6   & 2788   & \textbf{1842}  \\
-5K    & \textbf{4.6}   & 2.2   & 5461   & \textbf{2619}  \\
-6K    & \textbf{4.1}   & Fail  & \textbf{8219}   & Fail  \\
+1080p & 92.3  & \textbf{329.5} & 6618   & \textbf{2542}   \\
+1440p & 50.8  & \textbf{124.1}  & 11441   & \textbf{4482}   \\
+4K    & \textbf{23.0}   & 17.8   & 25883   & \textbf{10218}  \\
+5K    & \textbf{13.1}   & 7.7   & 48575   & \textbf{29534}  \\
+6K    & 9.2   & \textbf{9.8}  & \textbf{68568}   & Fail  \\
 \hline
 \end{tabular}
 \end{table}
@@ -184,18 +184,18 @@ Driver overhead is measured via direct client-server ping roundtrips (30 iterati
 \begin{table}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Storage Amplification and Disk Usage (100 rows)}
+\caption{Storage Amplification and Disk Usage (2000 rows)}
 \label{tab:storage_summary}
 \begin{tabular}{l r r r r}
 \hline
 \textbf{Res.} & \textbf{PostgreSQL} & \textbf{MongoDB} & \textbf{PostgreSQL} & \textbf{MongoDB} \\
  & \textbf{Disk (MB)} & \textbf{Disk (MB)} & \textbf{Amp} & \textbf{Amp} \\
 \hline
-1080p & 112.8  & 13.6   & 1.04$\times$ & \textbf{0.12$\times$} \\
-1440p & 172.7  & 128.1  & 1.05$\times$ & \textbf{0.78$\times$} \\
-4K    & \textbf{319.3}  & 922.7  & \textbf{1.06$\times$} & 3.08$\times$ \\
-5K    & \textbf{501.8} & 1473.2 & \textbf{1.04$\times$} & 3.05$\times$ \\
-6K    & \textbf{670.1} & Fail   & \textbf{1.04$\times$} & Fail \\
+1080p & 1671.4  & 161.7   & 1.04$\times$ & \textbf{0.10$\times$} \\
+1440p & 2907.6  & 755.1  & 1.04$\times$ & \textbf{0.27$\times$} \\
+4K    & 6211.6  & 9495.1  & \textbf{1.04$\times$} & 1.59$\times$ \\
+5K    & \textbf{10555.0} & 30554.1 & \textbf{1.04$\times$} & 3.00$\times$ \\
+6K    & \textbf{14801.6} & Fail   & \textbf{1.04$\times$} & Fail \\
 \hline
 \end{tabular}
 \end{table}
@@ -224,13 +224,13 @@ The multi-resolution results, summarized in Tables~\ref{tab:performance_summary}
 
 \subsection{Ingestion Throughput (RQ1)}
 \label{subsec:insert_throughput}
-As shown in Figure~\ref{fig:insert_throughput} and Table~\ref{tab:performance_summary}, insertion throughput exhibits a clear resolution-dependent crossover. In addition to the displayed resolutions, we also tested 360p, 480p, and 720p; these are omitted from the figures and tables for brevity, as MongoDB significantly outperforms PostgreSQL at these lower resolutions following the established trend. At 1080p, MongoDB achieves 133.2 rows/s---$6\times$ faster than PostgreSQL's 22.0 rows/s---due to WiredTiger's efficient in-memory document buffering for payloads up to 1~MB. However, this advantage narrows rapidly. At 1440p, the engines approach parity (21.3 vs.\ 19.1 rows/s). The critical inversion occurs at 4K, where PostgreSQL achieves 8.4 rows/s against MongoDB's 4.6 rows/s. At 5K, PostgreSQL provides 4.6 rows/s against MongoDB's 2.2 rows/s, and at 6K, MongoDB fails to process the payload, likely due to severe WiredTiger cache pressure and internal document limits.
+As shown in Figure~\ref{fig:insert_throughput} and Table~\ref{tab:performance_summary}, insertion throughput exhibits a clear resolution-dependent crossover. In addition to the displayed resolutions, we also tested 360p, 480p, and 720p; these are omitted from the figures and tables for brevity, as MongoDB significantly outperforms PostgreSQL at these lower resolutions following the established trend. At 1080p, MongoDB achieves 329.5 rows/s---$3.5\times$ faster than PostgreSQL's 92.3 rows/s---due to WiredTiger's efficient in-memory document buffering for payloads up to 1~MB. However, this advantage narrows rapidly. At 1440p, MongoDB leads PostgreSQL (124.1 vs.\ 50.8 rows/s). The critical inversion occurs at 4K, where PostgreSQL achieves 23.0 rows/s against MongoDB's 17.8 rows/s. At 5K, PostgreSQL provides 13.1 rows/s against MongoDB's 7.7 rows/s. Unlike previous architectural boundaries, at 6K, MongoDB successfully completes insertions when strictly buffered at a batch size of 50 (achieving 9.8 rows/s vs.\ PostgreSQL's 9.2 rows/s); however, extreme WiredTiger cache pressure ultimately prevents subsequent operations.
 
 This crossover is architecturally significant. PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism decouples large binary payloads from the primary B-Tree, maintaining stable write paths regardless of payload size. MongoDB's WiredTiger must serialize entire BSON documents---including multi-megabyte \texttt{BinData}---into contiguous page blocks, causing severe cache pressure as payloads grow.
 
 \subsection{Binary Payload Retrieval Latency (RQ2)}
 \label{subsec:retrieval_latency}
-When benchmarking the retrieval of the fully materialized binary datasets (Table~\ref{tab:performance_summary}), an opposing trend emerges. At lower resolutions (e.g., 1080p), MongoDB is significantly faster at returning the binary data ($6.1\times$ faster, 259~ms vs 1587~ms). This highlights the efficiency of MongoDB's contiguous inline storage when a query explicitly requests the binary content, avoiding PostgreSQL's required pointer lookup into the out-of-line TOAST table. However, as resolution scales, this inline advantage vanishes. At 4K, performance converges ($1.8$~s vs $2.8$~s, accelerating toward parity at 5K). Finally, at 6K resolution, WiredTiger memory exhaustion causes MongoDB to fail entirely, while PostgreSQL successfully retrieves the full binary dataset in 8.2~s.
+When benchmarking the retrieval of the fully materialized binary datasets (Table~\ref{tab:performance_summary}), an opposing trend emerges. At lower resolutions (e.g., 1080p), MongoDB is significantly faster at returning the binary data ($2.6\times$ faster, 2.5~s vs 6.6~s). This highlights the efficiency of MongoDB's contiguous inline storage when a query explicitly requests the binary content, avoiding PostgreSQL's required pointer lookup into the out-of-line TOAST table. Remarkably, even as resolution scales, this inline advantage persists in raw elapsed time: at 4K (10.2~s vs 25.8~s) and 5K (29.5~s vs 48.5~s), MongoDB retrieves the data faster than PostgreSQL. However, the system's stability deteriorates severely in the process; at 6K resolution, WiredTiger memory exhaustion causes MongoDB's retrieval to fail entirely via timeouts, while PostgreSQL successfully and deterministically retrieves the full binary dataset in 68.5~s without engine disruption.
 
 \subsection{Driver Overhead}
 \label{subsec:driver_overhead}
@@ -241,7 +241,7 @@ Driver roundtrip latency remains constant at $\sim$0.15--0.44~ms for both engine
 \label{subsec:storage_size}
 As detailed in Table~\ref{tab:storage_summary}, PostgreSQL maintains a remarkably stable storage amplification of $1.04\times$ across all resolutions, reflecting TOAST's efficient sequential storage of binary payloads.
 
-MongoDB's storage behavior reveals two distinct regimes. At 1080p, MongoDB achieves exceptional compression ($0.12\times$ amplification), demonstrating WiredTiger's block-compression efficiency for document--sized payloads. However, a sharp inflection occurs at 1440p ($0.64\times$), and at 4K the amplification explodes to $3.08\times$---consuming 922.7~MB versus PostgreSQL's 319.3~MB for identical data. This $3\times$ storage penalty at 4K arises because WiredTiger's snappy compression cannot compress high-entropy JPEG data, while the BSON document overhead and B-Tree page padding compound multiplicatively.
+MongoDB's storage behavior reveals two distinct regimes. At 1080p, MongoDB achieves exceptional compression ($0.10\times$ amplification), demonstrating WiredTiger's block-compression efficiency for document--sized payloads. However, a steady inflection occurs across resolutions up to 4K ($1.59\times$), and at 5K the amplification explodes to $3.00\times$---consuming 30.5~GB versus PostgreSQL's 10.5~GB for identical data. This $3\times$ storage penalty at 5K arises because WiredTiger's snappy compression cannot compress high-entropy JPEG data, while the BSON document overhead and B-Tree page padding compound multiplicatively.
 
 
 \section{Discussion}
@@ -260,7 +260,7 @@ Unlike PostgreSQL, which decouples large attributes into a separate TOAST table~
 MongoDB enforces a hard 16~MB BSON document limit~\cite{mongodb_bson_spec}, and while our 3~MB payloads fall within this ceiling, they still trigger the same copy-on-write behavior that degrades performance for documents approaching the limit. The recommended alternative---GridFS---chunks files into 255~KB segments stored as separate documents, but GridFS is \emph{incompatible} with MongoDB's native Time-Series Collections~\cite{mongodb_ts_limitations}.
 
 \subsection{Snappy Compression on High-Entropy Data}
-WiredTiger defaults to Snappy block compression, which is optimized for speed over compression ratio~\cite{mongodb_wiredtiger_storage}. Snappy excels at compressing repetitive structured data (JSON documents, numeric arrays) but achieves negligible compression on high-entropy binary data such as JPEG images---which are already entropy-coded. Our storage amplification data confirms this: at 1080p, where the binary payload is smaller relative to compressible metadata overhead, MongoDB achieves $0.12\times$ amplification. At 4K, the binary payload dominates the document, Snappy compression becomes ineffective, and BSON structural overhead compounds to produce $3.08\times$ amplification.
+WiredTiger defaults to Snappy block compression, which is optimized for speed over compression ratio~\cite{mongodb_wiredtiger_storage}. Snappy excels at compressing repetitive structured data (JSON documents, numeric arrays) but achieves negligible compression on high-entropy binary data such as JPEG images---which are already entropy-coded. Our storage amplification data confirms this: at 1080p, where the binary payload is smaller relative to compressible metadata overhead, MongoDB achieves $0.10\times$ amplification. At 5K, the binary payload dominates the document, Snappy compression becomes ineffective, and BSON structural overhead compounds to produce $3.00\times$ amplification.
 
 \subsection{PostgreSQL TOAST: Out-of-Line Advantage}
 TOAST (The Oversized-Attribute Storage Technique) is PostgreSQL's built-in mechanism for handling field values that exceed the database's fixed 8~KB page size. Rather than requiring application-level workarounds, TOAST transparently compresses and/or relocates oversized attributes to a dedicated secondary storage area, leaving only a small pointer in the main table row~\cite{postgresql_toast_docs}. Specifically, values exceeding approximately 2~KB are automatically moved out-of-line into a separate, sequentially-organized TOAST table. This architectural separation provides three critical advantages for image-based time-series: (1) the main table remains compact, enabling efficient B-Tree index traversal regardless of payload size; (2) retrieval queries reliably pull from contiguous secondary storage preventing buffer-pool eviction of hot indexes; and (3) sequential TOAST writes avoid the page fragmentation that plagues WiredTiger's inline storage, maintaining a constant $1.04\times$ amplification.
@@ -281,11 +281,11 @@ Several factors may affect generalizability. First, all experiments run on a sin
 
 This study systematically benchmarked PostgreSQL (TimescaleDB) against MongoDB for image-based time-series workloads across five primary resolutions inside containerized environments. We answer each research question:
 
-\textbf{RQ1 (Insertion Throughput):} MongoDB achieves $6\times$ higher throughput at 1080p (133.2 vs.\ 22.0 rows/s), but the advantage narrows rapidly with increasing resolution and inverts at 4K, where PostgreSQL leads (8.4 vs.\ 4.6 rows/s). The crossover occurs between 1440p and 4K.
+\textbf{RQ1 (Insertion Throughput):} MongoDB achieves $3.5\times$ higher throughput at 1080p (329.5 vs.\ 92.3 rows/s), but the advantage narrows and strictly inverts at 4K, where PostgreSQL leads (23.0 vs.\ 17.8 rows/s). The crossover firmly occurs between 1440p and 4K.
 
-\textbf{RQ2 (Binary Retrieval Latency):} MongoDB's inline storage provides a significant initial advantage for full binary retrieval, fetching documents $6.1\times$ faster than PostgreSQL at 1080p. However, this advantage narrows at 4K resolution (1.8~s vs 2.8~s) and ultimately results in engine failure at 6K under high memory pressure.
+\textbf{RQ2 (Binary Retrieval Latency):} MongoDB's inline storage provides a rapid advantage for binary execution, fetching documents faster than PostgreSQL up to 5K resolution (29.5~s vs 48.5~s). However, this architectural speed comes at the extreme cost of stability, resulting in absolute engine query failure at 6K.
 
-\textbf{RQ3 (Storage Amplification):} PostgreSQL maintains constant $1.04\times$ amplification across all resolutions. MongoDB transitions from highly efficient $0.12\times$ at 1080p to a prohibitive $3.08\times$ at 4K due to Snappy's inability to compress high-entropy binary payloads.
+\textbf{RQ3 (Storage Amplification):} PostgreSQL maintains a constant $1.04\times$ amplification across all resolutions. MongoDB transitions from a highly efficient $0.10\times$ at 1080p to a prohibitive $3.00\times$ limit at 5K due to Snappy's inability to compress high-entropy binary payloads.
 
 These findings provide resolution-dependent architectural guidelines: MongoDB excels for sub-megabyte payloads, while PostgreSQL's TOAST-based architecture proves more robust for high-resolution vision streams exceeding $\sim$1.5~MB per frame. Future work will investigate hybrid strategies combining metadata-optimized time-series collections with external binary object stores such as MinIO or S3.
 

@@ -1,0 +1,33 @@
+Generated boxplot_insert_throughput.pdf
+Generated boxplot_retrieval_latency.pdf
+
+--- Summary Averages ---
+
+Profile: 1080p_fhd_image
+  PostgreSQL Insert: 92.34 rows/s | Amp: 1.0388
+  PostgreSQL Retrieve: 6618.05 ms
+  MongoDB Insert: 329.53 rows/s | Amp: 0.1005
+  MongoDB Retrieve: 2542.41 ms
+
+Profile: 1440p_qhd_image
+  PostgreSQL Insert: 50.79 rows/s | Amp: 1.039
+  PostgreSQL Retrieve: 11441.43 ms
+  MongoDB Insert: 124.12 rows/s | Amp: 0.26982
+  MongoDB Retrieve: 4481.51 ms
+
+Profile: 4k_uhd_image
+  PostgreSQL Insert: 22.99 rows/s | Amp: 1.0378
+  PostgreSQL Retrieve: 25882.83 ms
+  MongoDB Insert: 17.83 rows/s | Amp: 1.5863400000000003
+  MongoDB Retrieve: 10217.91 ms
+
+Profile: 5k_image
+  PostgreSQL Insert: 13.08 rows/s | Amp: 1.0376
+  PostgreSQL Retrieve: 48575.38 ms
+  MongoDB Insert: 7.73 rows/s | Amp: 3.0036
+  MongoDB Retrieve: 29533.57 ms
+
+Profile: 6k_image
+  PostgreSQL Insert: 9.23 rows/s | Amp: 1.0377
+  PostgreSQL Retrieve: 68568.02 ms
+  MongoDB Insert: 9.76 rows/s | Amp: 0.0

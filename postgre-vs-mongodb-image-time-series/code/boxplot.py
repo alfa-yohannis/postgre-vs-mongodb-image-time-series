@@ -36,7 +36,7 @@ def load_summary_data(stem, y_col_mean, y_col_std=None):
     """
     data = {}
     for prof in PROFILE_ORDER:
-        path = f"{stem}_{prof}.csv"
+        path = f"results/{stem}_{prof}.csv"
         try:
             with open(path, newline="") as f:
                 reader = csv.DictReader(f)

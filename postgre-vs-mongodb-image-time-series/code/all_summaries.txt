@@ -1,0 +1,39 @@
+==> results/results_mongo_insert_summary_1080p_fhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T14:53:13.264802+00:00,mongodb_timeseries,1080p_fhd_image,image,843546,0.804468,100,2000,50,5,6.0696,0.0463,329.53,2.5,265.094,2.013,161.738,0.0,161.73,0.0,0.1005,0.0
+
+==> results/results_mongo_insert_summary_1440p_qhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T14:54:57.944621+00:00,mongodb_timeseries,1440p_qhd_image,image,1467123,1.399158,100,2000,50,5,16.1312,0.6153,124.12,4.54,173.666,6.346,755.134,3.204,755.083,3.204,0.2698,0.0011
+
+==> results/results_mongo_insert_summary_4k_uhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T15:05:03.493949+00:00,mongodb_timeseries,4k_uhd_image,image,3138125,2.992749,100,2000,50,5,112.1734,1.3062,17.83,0.21,53.365,0.616,9495.167,4.473,9495.097,4.473,1.5864,0.0007
+
+==> results/results_mongo_insert_summary_5k_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T15:28:53.539550+00:00,mongodb_timeseries,5k_image,image,5333253,5.086186,100,2000,50,5,258.575,1.9677,7.74,0.06,39.342,0.299,30554.124,0.004,30554.054,0.004,3.0036,0.0
+
+==> results/results_mongo_insert_summary_6k_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T15:49:45.728986+00:00,mongodb_timeseries,6k_image,image,7478528,7.13208,100,2000,50,5,204.9617,2.463,9.76,0.12,69.602,0.848,0.082,0.0,0.012,0.0,0.0,0.0
+
+==> results/results_postgres_insert_summary_1080p_fhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T23:20:04.574299+00:00,postgresql+timescaledb,1080p_fhd_image,image,843546,0.804468,100,2000,50,5,21.6759,0.6743,92.34,2.77,74.282,2.228,1680.434,0.083,1671.353,0.003,1.0388,0.0
+
+==> results/results_postgres_insert_summary_1440p_qhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T23:24:14.051180+00:00,postgresql+timescaledb,1440p_qhd_image,image,1467123,1.399158,100,2000,50,5,39.378,0.4454,50.79,0.57,71.07,0.795,2916.828,0.031,2907.584,0.003,1.039,0.0
+
+==> results/results_postgres_insert_summary_4k_uhd_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T23:33:00.002080+00:00,postgresql+timescaledb,4k_uhd_image,image,3138125,2.992749,100,2000,50,5,86.9992,0.5192,22.99,0.14,68.801,0.41,6220.917,0.012,6211.594,0.0,1.0378,0.0
+
+==> results/results_postgres_insert_summary_5k_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-06T23:49:02.098033+00:00,postgresql+timescaledb,5k_image,image,5333253,5.086186,100,2000,50,5,152.8845,0.8781,13.08,0.08,66.538,0.383,10564.462,0.056,10555.047,0.0,1.0376,0.0
+
+==> results/results_postgres_insert_summary_6k_image.csv <==
+timestamp,engine,profile,payload_kind,payload_size_bytes,payload_size_mb,warmup_rows,total_rows_per_run,batch_size,n_runs,mean_duration_sec,std_duration_sec,mean_rows_per_sec,std_rows_per_sec,mean_logical_mb_per_sec,std_logical_mb_per_sec,mean_db_size_after_mb,std_db_size_after_mb,mean_table_total_after_mb,std_table_total_after_mb,mean_storage_amplification,std_storage_amplification
+2026-04-07T00:13:05.924589+00:00,postgresql+timescaledb,6k_image,image,7478528,7.13208,100,2000,50,5,216.6501,1.6195,9.23,0.07,65.843,0.495,14811.053,0.014,14801.555,0.0,1.0377,0.0

@@ -328,8 +328,6 @@ paper/icct_alfa_yohannis_2.pdf
 *.csv
 code/restored_frame_postgre.jpg
 code/restored_frame_mongo.jpg
-**/paper/figures
-*/paper/figures
 **/__pycache__
 */__pycache__
 __pycache__

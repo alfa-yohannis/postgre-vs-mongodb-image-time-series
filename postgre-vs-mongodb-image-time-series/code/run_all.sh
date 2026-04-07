@@ -10,7 +10,8 @@ echo ""
 source ~/venv/bin/activate
 
 echo "Cleaning up old CSV results..."
-rm -f *.csv
+rm -rf results/
+mkdir -p results/
 
 TOTAL_START=$(date +%s)
 
@@ -41,8 +42,8 @@ echo "PHASE 1: MONGODB FULL BENCHMARK"
 echo "======================================"
 docker compose down -v
 docker compose up -d mongodb
-echo "Waiting 15 seconds for MongoDB to initialize..."
-sleep 15
+echo "Waiting 5 seconds for MongoDB to initialize..."
+sleep 5
 
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
@@ -59,8 +60,8 @@ echo "PHASE 2: POSTGRESQL FULL BENCHMARK"
 echo "======================================"
 docker compose down -v
 docker compose up -d timescaledb
-echo "Waiting 15 seconds for PostgreSQL to initialize..."
-sleep 15
+echo "Waiting 5 seconds for PostgreSQL to initialize..."
+sleep 5
 
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE

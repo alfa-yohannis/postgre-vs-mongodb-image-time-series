@@ -22,10 +22,10 @@ DB_CONFIG = {
 ENGINE_NAME = "postgres+psycopg2-driver"
 
 # Benchmark parameters
-WARMUP_RUNS = 20      # not logged
-N_RUNS = 30          # more runs = more stable std-dev
+WARMUP_RUNS = 4
+N_RUNS = 10
 
-SUMMARY_CSV_PATH = "results_postgres_driver_summary.csv"
+SUMMARY_CSV_PATH = "results/results_postgres_driver_summary.csv"
 
 
 # =========================

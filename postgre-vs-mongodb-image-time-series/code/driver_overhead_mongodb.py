@@ -15,10 +15,10 @@ MONGO_URI = "mongodb://mongo:mongo@127.0.0.1:57017/?authSource=admin"
 ENGINE_NAME = "mongodb+pymongo-driver"
 
 # Benchmark parameters
-WARMUP_RUNS = 20      # not logged
-N_RUNS = 30          # more runs = more stable std-dev
+WARMUP_RUNS = 4      # not logged
+N_RUNS = 10          # more runs = more stable std-dev
 
-SUMMARY_CSV_PATH = "results_mongo_driver_summary.csv"
+SUMMARY_CSV_PATH = "results/results_mongo_driver_summary.csv"
 
 
 # =========================
