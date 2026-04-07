@@ -16,8 +16,8 @@ sleep 15
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
     echo "--- MongoDB PROFILE: $PROFILE ---"
-    python insert_mongodb.py
-    python retrieve_mongodb.py
+    ~/venv/bin/python insert_mongodb.py
+    ~/venv/bin/python retrieve_mongodb.py
 done
 
 echo "======================================"
@@ -30,9 +30,9 @@ sleep 15
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
     echo "--- PostgreSQL PROFILE: $PROFILE ---"
-    python insert_postgre.py
-    python retrieve_postgre.py
+    ~/venv/bin/python insert_postgre.py
+    ~/venv/bin/python retrieve_postgre.py
 done
 
-python boxplot.py
+~/venv/bin/python boxplot.py
 docker compose down -v

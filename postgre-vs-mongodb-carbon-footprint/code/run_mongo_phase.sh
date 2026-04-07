@@ -23,15 +23,15 @@ echo "PHASE 1: MONGODB FULL BENCHMARK"
 echo "======================================"
 docker compose down -v
 docker compose up -d mongodb
-echo "Waiting 15 seconds for MongoDB to initialize..."
-sleep 15
+echo "Waiting 10 seconds for MongoDB to initialize..."
+sleep 10
 
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
     echo "======================================"
     echo "RUNNING MONGODB PROFILE: $PROFILE"
     echo "======================================"
-    run_step "[$PROFILE] Mongo Driver overhead..." "python driver_overhead_mongodb.py"
-    run_step "[$PROFILE] Mongo Insert benchmark..." "python insert_mongodb.py"
-    run_step "[$PROFILE] Mongo Retrieval benchmark..." "python retrieve_mongodb.py"
+    run_step "[$PROFILE] Mongo Driver overhead..." "~/venv/bin/python driver_overhead_mongodb.py"
+    run_step "[$PROFILE] Mongo Insert benchmark..." "~/venv/bin/python insert_mongodb.py"
+    run_step "[$PROFILE] Mongo Retrieval benchmark..." "~/venv/bin/python retrieve_mongodb.py"
 done

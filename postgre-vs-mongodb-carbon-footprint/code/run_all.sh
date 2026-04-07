@@ -11,22 +11,22 @@ echo ""
 source ~/venv/bin/activate
 
 echo "Cleaning up old CSV results..."
-rm -f *.csv
-rm -f emissions.csv
+rm -rf results/
+mkdir -p results/
 
 TOTAL_START=$(date +%s)
 
 # Execute Mongo Phase tracked by CodeCarbon
-python tracker.py mongodb_phase bash ./run_mongo_phase.sh
+~/venv/bin/python tracker.py mongodb_phase bash ./run_mongo_phase.sh
 
 # Execute PG Phase tracked by CodeCarbon
-python tracker.py postgres_phase bash ./run_postgres_phase.sh
+~/venv/bin/python tracker.py postgres_phase bash ./run_postgres_phase.sh
 
 echo "======================================"
 echo "PHASE 3: PLOTTING & CARBON ANALYSIS"
 echo "======================================"
-python boxplot.py
-python carbon_summary.py
+~/venv/bin/python boxplot.py
+~/venv/bin/python carbon_summary.py
 
 TOTAL_END=$(date +%s)
 TOTAL_DELTA=$((TOTAL_END - TOTAL_START))

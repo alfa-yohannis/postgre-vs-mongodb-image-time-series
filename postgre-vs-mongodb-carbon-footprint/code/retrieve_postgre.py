@@ -60,9 +60,11 @@ def main() -> None:
             """
 
             # Warmup
-            for _ in range(2):
-                cur.execute(query, (settings.device_id, ts_min, ts_max))
-                rows = cur.fetchall()
+            for _ in range(settings.aggregation_warmup_runs):
+                with conn.cursor(name="warmup_cur") as named_cur:
+                    named_cur.itersize = 20
+                    named_cur.execute(query, (settings.device_id, ts_min, ts_max))
+                    for row in named_cur: pass
 
             latencies = []
             rows_returned = 0
@@ -70,15 +72,19 @@ def main() -> None:
 
             for run_id in range(1, settings.aggregation_runs + 1):
                 t0 = time.perf_counter()
-                cur.execute(query, (settings.device_id, ts_min, ts_max))
-                rows = cur.fetchall()
-                # Force materialization of all binary payloads
-                byte_sum = sum(len(r[1]) for r in rows)
+                with conn.cursor(name=f"run_cur_{run_id}") as named_cur:
+                    named_cur.itersize = 20
+                    named_cur.execute(query, (settings.device_id, ts_min, ts_max))
+                    byte_sum = 0
+                    count = 0
+                    for row in named_cur:
+                        byte_sum += len(row[1])
+                        count += 1
                 t1 = time.perf_counter()
 
                 latency_ms = (t1 - t0) * 1000.0
                 latencies.append(latency_ms)
-                rows_returned = len(rows)
+                rows_returned = count
                 total_bytes = byte_sum
 
                 print(

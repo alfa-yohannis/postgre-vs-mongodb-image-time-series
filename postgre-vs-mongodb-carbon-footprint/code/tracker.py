@@ -13,7 +13,7 @@ def main():
     # Start CodeCarbon Tracker
     tracker = EmissionsTracker(
         project_name=project_name, 
-        output_dir=".",
+        output_dir="results",
         log_level="warning"
     )
     tracker.start()

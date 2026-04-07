@@ -10,7 +10,7 @@
 \usepackage{subcaption}
 
 \usepackage[draft,hidelinks,bookmarks=false,bookmarksdepth=0]{hyperref}
-\usepackage{xurl}  
+\usepackage{xurl}
 
 
 \usepackage{listings}
@@ -29,7 +29,7 @@
 \maketitle
 
 \begin{abstract}
-Smart building and facility-monitoring systems increasingly deploy IoT cameras that store high-resolution images inline in time-series databases. Selecting the right storage backend affects not only performance but also energy consumption and carbon emissions---a critical concern for green building initiatives. This paper measures and compares the carbon footprint of PostgreSQL (TimescaleDB) and MongoDB for image-based time-series workloads across four resolutions: 1080p ($\sim$1.09~MB), 1440p ($\sim$1.66~MB), 4K ($\sim$3.07~MB), and 5K ($\sim$4.83~MB). Using isolated Dockerized deployments and CodeCarbon energy tracking, we find that the complete MongoDB benchmark phase consumes 0.00157~kWh and emits 1064~mg CO$_2$eq---\textbf{20.3\% more} than PostgreSQL's 0.00131~kWh and 884~mg CO$_2$eq. The gap widens with resolution: estimated per-resolution emissions diverge sharply above 1440p as MongoDB's WiredTiger cache eviction and BSON serialization overhead grow with payload size. PostgreSQL's TOAST mechanism isolates large binary payloads out-of-line, maintaining stable $1.04\times$ storage amplification versus MongoDB's $2.99\times$ at 4K. These findings provide resolution-dependent guidance for carbon-aware database selection in green IoT deployments.
+Smart building and facility-monitoring systems increasingly deploy IoT cameras that store high-resolution images inline in time-series databases. Selecting the right storage backend affects not only performance but also energy consumption and carbon emissions---a growing concern for sustainable building operations. This paper measures and compares the carbon footprint of PostgreSQL (TimescaleDB) and MongoDB for image-based time-series workloads across four resolutions ranging from 1080p to 5K. Using isolated Dockerized deployments and hardware-level energy tracking via CodeCarbon, we find that the preferred engine depends on the target resolution. At lower resolutions, MongoDB completes workloads faster and therefore emits less carbon despite comparable per-second power consumption. Above 1440p, however, PostgreSQL becomes both faster and more energy-efficient, as MongoDB's inline document storage incurs increasing write amplification and cache pressure that prolong execution and raise energy use. PostgreSQL's TOAST mechanism, which relocates large binary payloads out-of-line, maintains stable storage amplification across all resolutions and yields a carbon advantage at 4K and above under the conditions tested. These findings provide resolution-dependent guidance for carbon-aware database selection in green IoT deployments.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -43,9 +43,7 @@ Modern smart building and facility-monitoring systems deploy dense networks of I
 
 Organizations commonly reuse existing general-purpose databases for this role. PostgreSQL~\cite{postgresql_official} with TimescaleDB~\cite{timescaledb_official} extends a proven relational engine with hypertable chunking and employs TOAST~\cite{postgresql_toast_docs} to relocate large binary payloads out-of-line. MongoDB~\cite{mongodb_official} offers native Time-Series Collections backed by the WiredTiger~\cite{mongodb_wiredtiger_storage} storage engine with Snappy~\cite{google_snappy} block compression, storing entire BSON documents---including multi-megabyte image binaries---inline in B-Tree pages~\cite{timescale_mongodb_comparison}. This inline vs.\ out-of-line architectural difference is expected to produce divergent energy profiles as image resolution grows.
 
-Existing benchmarks~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval} target lightweight numeric payloads and do not measure energy or emissions. No study evaluates the carbon cost of storing multi-megabyte image frames across varying resolutions in containerized environments.
-
-\textbf{Research Question:} \textit{What is the carbon footprint of inline image-based time-series storage in PostgreSQL (TimescaleDB) versus MongoDB across varying camera resolutions, and which engine is more energy-efficient for IoT building monitoring?}
+Existing benchmarks~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval} target lightweight numeric payloads and do not measure energy or emissions. No study evaluates the carbon cost of storing multi-megabyte image frames across varying resolutions in containerized environments. Therefore, this work aims to answer this research question: \textit{What is the carbon footprint of inline image-based time-series storage in PostgreSQL (TimescaleDB) versus MongoDB across varying camera resolutions, and which engine is more energy-efficient for IoT building monitoring?}
 
 We benchmark both engines across four resolutions (1080p--5K) using Docker containers, measure end-to-end CO$_2$ emissions with CodeCarbon~\cite{codecarbon}, and report supporting performance metrics to explain the observed energy differences.
 
@@ -67,7 +65,7 @@ Our work directly addresses this gap by conducting a systematic multi-resolution
 \label{sec:methodology}
 
 \subsection{Hardware and Software Environment}
-All experiments execute on a single host machine running Linux 6.8.0 with an 11th Gen Intel Core i7-1165G7 processor (4 cores / 8 threads, 2.80~GHz base, 28~W TDP) and 15.3~GB RAM. The machine is located in Indonesia (Java grid region); CodeCarbon uses the corresponding national carbon intensity factor. Containers share host CPU and memory with no explicit CPU pinning or memory limits beyond the MongoDB WiredTiger cache cap. Table~\ref{tab:software_versions} lists the software stack.
+All experiments execute on a single host machine running Linux 6.8.0-107 with an 11th Gen Intel Core i9-11900H processor (8 cores / 16 threads, 2.50~GHz base) and 31~GB RAM. The machine is located in Indonesia (Banten grid region); CodeCarbon uses the corresponding national carbon intensity factor. CPU and RAM power are measured via Intel RAPL hardware counters (\texttt{tracking\_mode=machine}). Containers share host CPU and memory with no explicit CPU pinning or memory limits beyond the MongoDB WiredTiger cache cap. Table~\ref{tab:software_versions} lists the software stack.
 
 \begin{table}[htbp]
 \centering
@@ -78,46 +76,44 @@ All experiments execute on a single host machine running Linux 6.8.0 with an 11t
 \hline
 \textbf{Component} & \textbf{Version} \\
 \hline
-Host OS         & Linux 6.8.0-90-generic (x86\_64) \\
+Host OS         & Linux 6.8.0-107-generic (x86\_64) \\
 Docker          & Compose v2 \\
 PostgreSQL      & 15 + TimescaleDB 2.x \\
 MongoDB         & 7.0 \\
-Python          & 3.12.3 \\
+Python          & 3.14.3 \\
 psycopg2        & (latest) \\
 pymongo         & (latest) \\
-CodeCarbon      & 3.2.5 \\
+CodeCarbon      & 3.2.6 \\
 \hline
 \end{tabular}
 \end{table}
 
 \subsection{Environment and Workloads}
-All experiments run in isolated Docker~\cite{docker_official} containers: PostgreSQL~15 with TimescaleDB~\cite{timescaledb_official} using default shared buffers, and MongoDB~7.0~\cite{mongodb_official} with \texttt{--wiredTigerCacheSizeGB~2} (a realistic IoT gateway constraint). The 2~GB WiredTiger cache approximates the auto-configured value on an IoT gateway with 4--8~GB RAM and reflects realistic containerised edge deployments. Four quality-100 JPEG resolutions simulate building-camera payloads: 1080p ($1920{\times}1080$, $\sim$1.09~MB), 1440p ($2560{\times}1440$, $\sim$1.66~MB), 4K~UHD ($3840{\times}2160$, $\sim$3.07~MB), and 5K ($5120{\times}2880$, $\sim$4.83~MB). Maximum-quality JPEG ensures high visual entropy that defeats internal compression, reflecting worst-case inline storage.
+All experiments run in isolated Docker~\cite{docker_official} containers: PostgreSQL~15 with TimescaleDB~\cite{timescaledb_official} using default shared buffers, and MongoDB~7.0~\cite{mongodb_official} with \texttt{--wiredTigerCacheSizeGB~30}, allocating nearly all available system RAM (31~GB) to the WiredTiger buffer pool. This server-grade configuration allows the complete working set to reside in memory at lower resolutions, isolating the effect of inline document size from cache-pressure artefacts at modest scales. Four quality-90 JPEG resolutions simulate building-camera payloads: 1080p ($1920{\times}1080$, $\sim$0.80~MB), 1440p ($2560{\times}1440$, $\sim$1.40~MB), 4K~UHD ($3840{\times}2160$, $\sim$2.99~MB), and 5K ($5120{\times}2880$, $\sim$5.09~MB). High-quality JPEG at 90 retains high visual entropy that largely defeats internal block compression, reflecting realistic inline storage conditions.
 
 \subsection{Schema and Operations}
 PostgreSQL stores each frame as a \texttt{BYTEA} row in a TimescaleDB hypertable; TOAST~\cite{postgresql_toast_docs} automatically relocates payloads exceeding $\sim$2~KB out-of-line. MongoDB stores functionally equivalent documents with the binary payload as inline \texttt{BinData}~\cite{mongodb_bson_spec} in a native Time-Series Collection (Snappy-compressed WiredTiger B-Tree). Both schemas carry a compound index on \texttt{(device\_id, ts~DESC)}.
 
-For each resolution, 100 records are inserted in batches of 50 (5 runs), followed by 15 binary retrieval runs that fully materialise the \texttt{payload\_data} column for 100 rows. The 5K profile uses a smaller batch size of 25 to avoid exceeding MongoDB's 16~MB per-document BSON limit under worst-case framing. Each engine is wiped and rebuilt between resolutions. Storage amplification is measured as on-disk size divided by raw payload size.
+For each resolution, 2,000 records are inserted in batches of 50 across 5 runs, followed by 5 binary retrieval runs that fully materialise the \texttt{payload\_data} column for 2,000 rows. Each engine is wiped and rebuilt between resolutions. Storage amplification is measured as on-disk size divided by raw payload size.
 
 \subsection{Carbon Footprint Measurement}
-Each engine phase runs as a single CodeCarbon~\cite{codecarbon}-tracked process. CodeCarbon estimates CPU and RAM power draw and converts total energy to CO$_2$-equivalent using regional grid intensity. All operations for a given engine (insertions and retrievals across all four resolutions) are aggregated into one measurement, isolating per-engine carbon cost under identical hardware conditions. Per-resolution emissions are estimated using a constant power-rate model: the measured total energy $E$ and duration $T$ yield an average power $P = E/T$; each profile's estimated energy is then $P \times t_i$, where $t_i$ is the sum of mean insertion and retrieval times for that profile across all runs. This model assumes constant CPU and RAM power draw, which is a simplification---actual power varies between write-intensive and read-intensive phases---but provides a principled first-order breakdown consistent with CodeCarbon's own TDP-based estimation.
-
-Note that CodeCarbon detected the two engine phases as running in slightly different sub-regions of the same grid (``banten'' and ``jakarta''); both map to the same national Indonesia carbon intensity factor, so emissions comparisons remain valid.
+Each engine phase runs as a single CodeCarbon~\cite{codecarbon}-tracked process. CodeCarbon reads CPU and RAM power via Intel RAPL hardware counters and converts total energy to CO$_2$-equivalent using the regional grid intensity for Indonesia ($\approx$0.676~kg CO$_2$eq/kWh). All operations for a given engine (insertions and retrievals across all four resolutions) are aggregated into one measurement, isolating per-engine carbon cost under identical hardware conditions. Per-resolution emissions are estimated using a constant power-rate model: the measured total energy $E$ and duration $T$ yield an average power $P = E/T$; each profile's estimated energy is then $P \times t_i$, where $t_i$ is the sum of mean insertion and retrieval times for that profile across all runs. This model assumes constant CPU and RAM power draw throughout the phase, providing a principled first-order breakdown consistent with CodeCarbon's measurement approach.
 
 
 \begin{table}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Insert Throughput, Retrieval Latency, and Storage (100 rows)}
+\caption{Insert Throughput, Retrieval Latency, and Storage (2,000 rows)}
 \label{tab:performance_summary}
 \begin{tabular}{l r r r r r r}
 \hline
 \textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (r/s)}} & \multicolumn{2}{c}{\textbf{Retr. (ms)}} & \multicolumn{2}{c}{\textbf{Storage amp.}} \\
  & \textbf{PG} & \textbf{MG} & \textbf{PG} & \textbf{MG} & \textbf{PG} & \textbf{MG} \\
 \hline
-1080p & 21.7  & \textbf{113.2} & 687  & \textbf{283}  & 1.04$\times$ & \textbf{0.12$\times$} \\
-1440p & 16.6  & \textbf{26.6}  & 1061 & \textbf{478}  & 1.04$\times$ & \textbf{0.77$\times$} \\
-4K    & \textbf{9.9}  & 5.5   & 2448 & \textbf{742}  & \textbf{1.04$\times$} & 2.99$\times$ \\
-5K    & \textbf{6.7}  & 2.9   & 3916 & \textbf{1406} & \textbf{1.04$\times$} & 3.04$\times$ \\
+1080p & 87.6  & \textbf{337.6} & 6906  & \textbf{2412}  & 1.04$\times$ & \textbf{0.10$\times$} \\
+1440p & 49.9  & \textbf{128.3} & 11619 & \textbf{4260}  & 1.04$\times$ & \textbf{0.27$\times$} \\
+4K    & \textbf{23.3} & 18.1  & 25267 & \textbf{10143} & \textbf{1.04$\times$} & 1.58$\times$ \\
+5K    & \textbf{13.6} & 7.8   & 47044 & \textbf{28377} & \textbf{1.04$\times$} & 3.00$\times$ \\
 \hline
 \end{tabular}
 \end{table}
@@ -125,7 +121,7 @@ Note that CodeCarbon detected the two engine phases as running in slightly diffe
 \begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Per-Resolution Carbon Footprint Breakdown (estimated via constant power-rate model). PG = PostgreSQL, MG = MongoDB. Bold = higher cost per row.}
+\caption{Per-Resolution Carbon Footprint Breakdown (estimated via constant power-rate model; Total row shows measured values from CodeCarbon). PG = PostgreSQL, MG = MongoDB. Bold = higher cost.}
 \label{tab:carbon_summary}
 \begin{tabular}{l rr rr rr rr rr}
 \hline
@@ -137,12 +133,12 @@ Note that CodeCarbon detected the two engine phases as running in slightly diffe
   & \multicolumn{2}{c}{\textbf{Emissions (mg CO$_2$eq)}} \\
   & PG & MG & PG & MG & PG & MG & PG & MG & PG & MG \\
 \hline
-1080p & 33.9 & \textbf{9.7}  & \textbf{117.6} & 34.1  & \textbf{26.6} & 8.0   & \textbf{91.0}  & 26.1  & \textbf{79.5}  & 23.1  \\
-1440p & 49.2 & \textbf{27.5} & \textbf{170.5} & 96.4  & \textbf{38.6} & 22.6  & \textbf{132.0} & 73.8  & \textbf{115.3} & 65.2  \\
-4K    & \textbf{89.4} & 106.4 & 309.8 & \textbf{373.2} & 70.1 & \textbf{87.5} & 239.7 & \textbf{285.7} & 209.4 & \textbf{252.2} \\
-5K    & \textbf{134.5} & 191.7 & 466.2 & \textbf{672.3} & 105.5 & \textbf{157.7} & 360.7 & \textbf{514.7} & 315.1 & \textbf{454.5} \\
+1080p & \textbf{148.7} & 41.7  & \textbf{1872} & 542   & \textbf{1046} & 310   & \textbf{826}  & 232   & \textbf{1266} & 366   \\
+1440p & \textbf{258.5} & 99.3  & \textbf{3254} & 1290  & \textbf{1818} & 739   & \textbf{1436} & 552   & \textbf{2200} & 872   \\
+4K    & 555.8 & \textbf{602.1} & 6997  & \textbf{7824}  & 3910  & \textbf{4480}  & 3088  & \textbf{3345}  & 4730  & \textbf{5289}  \\
+5K    & 973.1 & \textbf{1430.1}& 12252 & \textbf{18585} & 6845  & \textbf{10640} & 5406  & \textbf{7945}  & 8281  & \textbf{12562} \\
 \hline
-\textbf{Total} & 377.5 & \textbf{448.7} & 1310 & \textbf{1574} & 296 & \textbf{369} & 1012 & \textbf{1205} & 884 & \textbf{1064} \\
+\textbf{Total} & 2167 & \textbf{2378} & 27280 & \textbf{30906} & 15242 & \textbf{17694} & 12038 & \textbf{13212} & 18439 & \textbf{20891} \\
 \hline
 \end{tabular}
 \end{table*}
@@ -156,64 +152,65 @@ Note that CodeCarbon detected the two engine phases as running in slightly diffe
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/boxplot_insert_throughput.pdf}
-\caption{Insert throughput (1080p--5K). MongoDB leads at 1080p; PostgreSQL overtakes above 1440p.}
+\caption{Insert throughput (rows/s) across 1080p--5K. MongoDB leads at 1080p and 1440p; PostgreSQL overtakes above 1440p.}
 \label{fig:insert_throughput}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/boxplot_retrieval_latency.pdf}
-\caption{Binary retrieval latency (100 rows, log scale). MongoDB leads at all resolutions (1080p--5K).}
+\caption{Binary retrieval latency (2,000 rows). MongoDB is consistently faster across all resolutions.}
 \label{fig:retrieval_latency}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/carbon_footprint.pdf}
-\caption{Estimated CO$_2$ emissions (mg) per resolution. MongoDB diverges sharply from PostgreSQL above 1440p.}
+\caption{Estimated CO$_2$eq emissions (mg) per resolution, split by insert and retrieval contribution. MongoDB emits less at 1080p--1440p due to faster completion; PostgreSQL is more efficient above 1440p.}
 \label{fig:carbon_footprint}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/carbon_breakdown.pdf}
-
-\caption{Per-resolution carbon breakdown (estimated via constant power-rate model): benchmark duration, total energy, CPU energy, RAM energy, and CO$_2$ emissions. MongoDB exceeds PostgreSQL above 1440p across all components.}
+\caption{Per-resolution energy breakdown (CPU + RAM, stacked bars) with benchmark duration (dashed lines, right axis). Total energy lines connect bar tops. MongoDB exceeds PostgreSQL above 1440p across all components.}
 \label{fig:carbon_breakdown}
 \end{figure*}
 
 \subsection{Supporting Performance Observations}
 \label{subsec:performance}
-Table~\ref{tab:performance_summary} and Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency} summarise the performance results. Insertion throughput crosses over between 1440p and 4K: MongoDB leads at 1080p (113.2 vs.\ 21.7~r/s) and 1440p (26.6 vs.\ 16.6~r/s), but PostgreSQL overtakes at 4K (9.9 vs.\ 5.5~r/s) and 5K (6.7 vs.\ 2.9~r/s). Binary retrieval shows a consistent advantage for MongoDB across \emph{all} resolutions: $2.4\times$ faster at 1080p (283 vs.\ 687~ms), $2.2\times$ at 1440p (478 vs.\ 1061~ms), $3.3\times$ at 4K (742 vs.\ 2448~ms), and $2.8\times$ at 5K (1406 vs.\ 3916~ms). MongoDB's inline \texttt{BinData} storage enables direct sequential reads from contiguous B-Tree leaf pages, avoiding PostgreSQL's TOAST pointer dereference to a secondary table. Storage amplification shows a resolution-dependent regime change for MongoDB: $0.12\times$ at 1080p (Snappy effectively compresses small documents where JSON metadata dominates) rising to $0.77\times$ at 1440p, then exploding to $2.99\times$ at 4K and $3.04\times$ at 5K as the JPEG binary payload begins to dominate document size and defeats block compression.
+Table~\ref{tab:performance_summary} and Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency} summarise the performance results. Insert throughput crosses over between 1440p and 4K: MongoDB leads at 1080p (337.6 vs.\ 87.6~r/s, $3.85\times$) and 1440p (128.3 vs.\ 49.9~r/s, $2.57\times$), but PostgreSQL overtakes at 4K (23.3 vs.\ 18.1~r/s, $1.28\times$) and widens its lead at 5K (13.6 vs.\ 7.8~r/s, $1.74\times$). Binary retrieval favours MongoDB consistently across \emph{all} resolutions: $2.86\times$ faster at 1080p (2,412 vs.\ 6,906~ms), $2.73\times$ at 1440p (4,260 vs.\ 11,619~ms), $2.49\times$ at 4K (10,143 vs.\ 25,267~ms), and $1.66\times$ at 5K (28,377 vs.\ 47,044~ms). MongoDB's inline \texttt{BinData} storage likely benefits retrieval by keeping payload bytes within the main B-Tree pages, whereas PostgreSQL must follow TOAST pointers to a secondary table; this is consistent with MongoDB's consistent retrieval advantage across all resolutions. Storage amplification shows a resolution-dependent regime change for MongoDB: $0.10\times$ at 1080p (Snappy effectively compresses small documents where JSON metadata dominates) rising to $0.27\times$ at 1440p, then crossing unity to $1.58\times$ at 4K and $3.00\times$ at 5K as the JPEG binary payload dominates and defeats block compression. PostgreSQL maintains stable $1.04\times$ amplification at all resolutions.
 
 \subsection{Carbon Footprint (RQ)}
 \label{subsec:carbon_footprint}
-Table~\ref{tab:carbon_summary} and Figure~\ref{fig:carbon_footprint} report energy and emissions. The complete MongoDB phase consumed 0.00157~kWh over 448.7~s, emitting 1064~mg CO$_2$eq. PostgreSQL consumed 0.00131~kWh over 377.5~s, emitting 884~mg CO$_2$eq---a \textbf{20.3\% carbon advantage for PostgreSQL}. RAM dominates both ($\sim$77\% of total energy); CPU energy is 24.7\% higher for MongoDB. Per-resolution estimates (Figures~\ref{fig:carbon_footprint} and~\ref{fig:carbon_breakdown}) reveal a nuanced picture. At 1080p, MongoDB's faster insertion (113 vs.\ 22~r/s) means it completes the profile $3.5\times$ faster (9.7 vs.\ 33.9~s), so it actually emits \emph{less} per resolution (23 vs.\ 80~mg CO$_2$eq). The same holds at 1440p (65 vs.\ 115~mg). The crossover occurs at 4K, where MongoDB's insertion slows drastically due to WiredTiger cache eviction (5.5 vs.\ 9.9~r/s), causing it to take 19\% longer (106.4 vs.\ 89.4~s) and emit 20\% more (252 vs.\ 209~mg). At 5K the gap widens to 44\% more time and 44\% more emissions for MongoDB (455 vs.\ 315~mg). The aggregate 20.3\% carbon premium for MongoDB therefore reflects the dominance of the high-resolution profiles, which contribute the majority of total benchmark time.
+Table~\ref{tab:carbon_summary} and Figures~\ref{fig:carbon_footprint}--\ref{fig:carbon_breakdown} report energy and emissions. The complete MongoDB phase consumed 0.0309~kWh over 2,378~s, emitting 20,891~mg CO$_2$eq. PostgreSQL consumed 0.0273~kWh over 2,167~s, emitting 18,439~mg CO$_2$eq---a \textbf{13.3\% carbon advantage for PostgreSQL}. CPU energy accounts for approximately 57\% of total consumption in both phases; MongoDB's CPU energy is 16.1\% higher than PostgreSQL's. The additional carbon cost for MongoDB stems from both longer execution (+9.8\%) and slightly higher average CPU power draw during write-intensive phases.
+
+Per-resolution estimates (Figures~\ref{fig:carbon_footprint} and~\ref{fig:carbon_breakdown}) reveal a nuanced, resolution-dependent picture. At 1080p, MongoDB's much faster insertion ($3.85\times$) means it completes the profile in 41.7~s versus PostgreSQL's 148.7~s, emitting substantially less per resolution (366 vs.\ 1,266~mg CO$_2$eq). The same advantage holds at 1440p (872 vs.\ 2,200~mg). The crossover occurs at 4K, where MongoDB's insertion slows (18.1 vs.\ 23.3~r/s) due to the inherent overhead of serializing and writing 2.99~MB BSON documents inline into B-Tree leaf pages---even though the 9.3~GB MongoDB database at 4K still fits within the 30~GB cache. This causes it to take 8.3\% longer (602 vs.\ 556~s) and emit 11.8\% more (5,289 vs.\ 4,730~mg). At 5K the gap widens significantly: the cumulative database grows to $\sim$29.8~GB, approaching the 30~GB cache limit, so later insert runs trigger buffer pool eviction on top of the large-document serialization overhead. MongoDB takes 47\% longer (1,430 vs.\ 973~s) and emits 52\% more CO$_2$eq (12,562 vs.\ 8,281~mg). The aggregate 13.3\% carbon premium for MongoDB is dominated by the high-resolution profiles, which account for the majority of total benchmark time.
 
 
 \section{Discussion}
 \label{sec:discussion}
 
-\textbf{Why MongoDB costs more energy.} MongoDB's WiredTiger engine stores entire BSON documents---including multi-megabyte \texttt{BinData} image payloads---inline in B-Tree leaf pages~\cite{mongodb_bson_spec,mongodb_wiredtiger_storage}. As payloads grow above $\sim$1.5~MB, the working set no longer fits in the 2~GB WiredTiger cache; eviction threads stall application threads to flush dirty pages~\cite{percona_wiredtiger_eviction}, prolonging execution and elevating CPU/RAM energy. At low resolutions (1080p--1440p), Snappy's block compression is effective because the document is small enough that the structured JSON metadata constitutes a significant compressible fraction, explaining MongoDB's $0.12\times$ amplification at 1080p. However, as payload size grows above $\sim$1.5~MB, the high-entropy JPEG binary dominates the document and defeats block compression~\cite{mongodb_wiredtiger_storage}, causing the $3\times$ storage amplification at 4K--5K and the corresponding extra write I/O energy. GridFS would avoid inline storage but is incompatible with native Time-Series Collections~\cite{mongodb_ts_limitations}.
+\textbf{Why MongoDB costs more energy.} MongoDB's WiredTiger engine stores entire BSON documents---including multi-megabyte \texttt{BinData} image payloads---inline in B-Tree leaf pages~\cite{mongodb_bson_spec,mongodb_wiredtiger_storage}. At 1080p and 1440p, the accumulated database ($\sim$0.16 and $\sim$0.74~GB respectively) fits entirely within the 30~GB cache, enabling cache-resident writes and explaining MongoDB's strong insertion throughput at these resolutions. The degradation at 4K stems not from cache eviction---the 9.3~GB database still fits comfortably---but from the inherent cost of serializing and writing 2.99~MB documents inline: each insert requires more CPU work per operation and produces less compressible B-Tree page content. At 5K, the cumulative database ($\sim$29.8~GB) approaches the 30~GB cache limit; by the later insert runs the buffer pool has no headroom and eviction threads stall application threads to flush dirty pages~\cite{percona_wiredtiger_eviction}, compounding the large-document overhead. At low resolutions, Snappy compression is effective because structured JSON metadata dominates small documents, explaining MongoDB's $0.10\times$ amplification at 1080p. As payload size grows, the high-entropy JPEG binary defeats block compression~\cite{mongodb_wiredtiger_storage}, causing storage amplification to reach $3.00\times$ at 5K with corresponding extra write I/O energy. GridFS would avoid inline storage but is incompatible with native Time-Series Collections~\cite{mongodb_ts_limitations}.
 
-\textbf{Why PostgreSQL is more efficient.} TOAST~\cite{postgresql_toast_docs} relocates payloads exceeding $\sim$2~KB out-of-line into a sequentially-organised secondary table, leaving only a small pointer in the main hypertable row. This keeps the primary B-Tree compact for fast index traversal regardless of resolution, produces stable $1.04\times$ amplification, and avoids the page-rewrite amplification that stalls WiredTiger. The resulting lower I/O volume and shorter execution time ($-19\%$) directly translate to lower energy consumption. Notably, MongoDB's inline storage \emph{does} deliver faster binary retrieval at all resolutions ($2.2$--$3.3\times$)---a genuine advantage of the document model for read-heavy workloads---but this benefit is outweighed in energy terms by MongoDB's write amplification at 4K and above.
+\textbf{Why PostgreSQL is more efficient.} TOAST~\cite{postgresql_toast_docs} relocates payloads exceeding $\sim$2~KB out-of-line into a sequentially-organised secondary table, leaving only a small pointer in the main hypertable row. This keeps the primary B-Tree compact for fast index traversal regardless of resolution, produces stable $1.04\times$ amplification, and avoids the large-page write overhead observed in MongoDB at higher resolutions. The resulting lower I/O volume contributes to PostgreSQL's shorter total execution time (9.8\% less than MongoDB at the phase level) and lower energy consumption. Notably, MongoDB's inline storage \emph{does} deliver faster binary retrieval at all resolutions ($1.7$--$2.9\times$)---a genuine advantage of the document model for read-heavy workloads---but this benefit is outweighed in energy terms by MongoDB's write amplification at 4K and above.
 
-\textbf{Implications for green building monitoring.} For a building-monitoring deployment ingesting 4K frames continuously, MongoDB's $\sim$20\% energy premium accumulates to a meaningful carbon cost over months of operation. At 1080p MongoDB's inline storage is actually advantageous (faster retrieval, better compression), so the appropriate choice depends on camera resolution. Above 1440p, PostgreSQL with TimescaleDB is both faster and more carbon-efficient; MongoDB paired with an external object store (MinIO, S3) should be evaluated for large-payload scenarios.
+\textbf{Implications for green building monitoring.} At 1080p MongoDB's inline storage is actually advantageous---faster retrieval, better compression, and lower carbon per profile---so the appropriate choice depends on camera resolution. Above 1440p, PostgreSQL with TimescaleDB is both faster for insertion and more carbon-efficient. The per-row carbon difference at 4K is modest in isolation, but accumulates with ingestion volume. MongoDB paired with an external object store (MinIO, S3) should be evaluated for large-payload scenarios where retrieval speed is paramount.
 
-\textbf{Scale-up carbon analysis.} To contextualise these results for a production deployment, consider a smart building with 50 cameras each capturing 4K frames at one frame per minute (86,400 frames/day per camera). Based on measured insertion rates, MongoDB requires $1/5.5 \approx 0.18$~s of active database time per frame versus $1/9.9 \approx 0.10$~s for PostgreSQL---a 1.8$\times$ insertion time premium per operation. Using the measured emissions rates (2.37 vs.\ 2.34~mg~CO$_2$eq/s for MongoDB and PostgreSQL respectively, from Table~\ref{tab:carbon_summary}), the annual per-camera carbon cost at 4K is approximately 1.7~g~CO$_2$eq for MongoDB versus 0.9~g for PostgreSQL. Across 50 cameras, the annual difference is $\sim$40~g~CO$_2$eq---equivalent to roughly 160~m of car travel. While modest at building scale, this difference compounds across smart city deployments (thousands of buildings, millions of cameras) and accumulates over system lifetimes of 10--20 years.
+\textbf{Scale-up indication.} The benchmark measurements provide a per-row emission indicator. At 4K, dividing the measured phase emission rate by the insertion rate yields $\sim$0.49~mg CO$_2$eq per row inserted for MongoDB and $\sim$0.37~mg for PostgreSQL---a $\sim$33\% higher per-row cost. This indicator is derived from a batch benchmark on a single machine and should not be extrapolated directly to production deployments, where workload patterns, concurrency, and hardware differ. It nonetheless illustrates that the relative carbon cost difference per ingested frame grows with resolution and accumulates with data volume.
 
-\textbf{Threats to validity.} Results are from a single host; distributed deployments may differ. Maximum-quality JPEG payloads represent the high-entropy worst case. CodeCarbon estimates CPU power via TDP and load rather than direct RAPL counters (permission-restricted); per-resolution emissions are proportional estimates. Both phases are measured under identical conditions, so the relative comparison remains valid.
+\textbf{Threats to validity.} Results are from a single host; distributed deployments may differ. Quality-90 JPEG payloads represent a realistic but not worst-case scenario; lower-quality images would reduce payload size and shift the crossover point. CPU and RAM power are measured via Intel RAPL hardware counters (\texttt{tracking\_mode=machine}); per-resolution emissions are proportional estimates based on a constant power-rate assumption. Both phases are measured under identical hardware conditions, so the relative comparison remains valid.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-This study measured the carbon footprint of PostgreSQL (TimescaleDB) and MongoDB for building-monitoring IoT image workloads across 1080p--5K inside Docker containers using CodeCarbon.
+This study measured the carbon footprint of PostgreSQL (TimescaleDB) and MongoDB for building-monitoring IoT image workloads across 1080p--5K inside Docker containers using CodeCarbon with RAPL-based hardware energy measurement.
 
-\textbf{RQ answer:} MongoDB emits 1064~mg CO$_2$eq (0.00157~kWh) versus PostgreSQL's 884~mg CO$_2$eq (0.00131~kWh)---a \textbf{20.3\% carbon premium for MongoDB}. The premium stems from WiredTiger cache eviction and BSON inline serialization overhead that grow with payload size, prolonging execution (+18.8\%) and raising CPU energy (+24.7\%). Per-resolution estimates show the gap emerging above 1440p and widening at 4K--5K. Supporting results confirm MongoDB leads on throughput and retrieval speed at 1080p, while PostgreSQL's TOAST-based architecture is faster \emph{and} more energy-efficient above 1440p.
+\textbf{RQ answer:} MongoDB emits 20,891~mg CO$_2$eq (0.0309~kWh) versus PostgreSQL's 18,439~mg CO$_2$eq (0.0273~kWh)---a \textbf{13.3\% carbon premium for MongoDB} overall. The premium stems from BSON inline serialization overhead at 4K and buffer pool pressure as the 5K working set approaches the 30~GB cache limit, prolonging execution (+9.8\%) and raising CPU energy (+16.1\%). Per-resolution estimates show PostgreSQL emitting \emph{more} at 1080p--1440p (where MongoDB's faster completion dominates) but less at 4K--5K where MongoDB's write amplification takes effect.
 
-These results offer actionable guidance for green IoT deployments. At 1080p, MongoDB is both faster \emph{and} more carbon-efficient (fewer emissions due to faster completion). At 4K and above, PostgreSQL is the better choice: it is faster for insertion, emits 20\% less carbon, and maintains $1.04\times$ storage amplification versus MongoDB's $3\times$ penalty. MongoDB retains a meaningful advantage in binary retrieval speed ($2.2$--$3.3\times$ faster) across all resolutions, making it attractive for read-heavy workloads where retrieval dominates operation time.
+These results offer actionable guidance for green IoT deployments. At 1080p and 1440p, MongoDB is faster \emph{and} more carbon-efficient per profile due to faster completion. At 4K and above, PostgreSQL is the better choice under the tested conditions: it is faster for insertion, emits less carbon, and maintains $1.04\times$ storage amplification versus MongoDB's $3.00\times$ at 5K. MongoDB retains a consistent advantage in binary retrieval speed ($1.7$--$2.9\times$ faster) across all resolutions, making it attractive for read-heavy workloads.
 
-Future work will evaluate hybrid architectures that combine PostgreSQL or MongoDB for metadata and time-series indexing with an external binary object store (MinIO, S3) to decouple payload storage from the database engine. Direct power measurement via hardware PDUs or Intel RAPL (with appropriate OS permissions) would improve the accuracy of per-resolution carbon attribution beyond the constant-rate model used here.
+Future work will evaluate hybrid architectures that combine PostgreSQL or MongoDB for metadata and time-series indexing with an external binary object store (MinIO, S3) to decouple payload storage from the database engine. Extending the benchmark to 6K resolutions and video payloads would further characterise the crossover dynamics.
 
 
 \section*{Acknowledgment}

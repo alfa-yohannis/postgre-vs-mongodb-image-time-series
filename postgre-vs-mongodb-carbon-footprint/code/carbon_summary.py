@@ -2,8 +2,8 @@ import csv
 from pathlib import Path
 
 def main():
-    emissions_file = Path("emissions.csv")
-    output_markdown = Path("carbon_results.md")
+    emissions_file = Path("results/emissions.csv")
+    output_markdown = Path("results/carbon_results.md")
 
     if not emissions_file.exists():
         print(f"Error: {emissions_file} not found.")

@@ -23,15 +23,15 @@ echo "PHASE 2: POSTGRESQL FULL BENCHMARK"
 echo "======================================"
 docker compose down -v
 docker compose up -d timescaledb
-echo "Waiting 15 seconds for PostgreSQL to initialize..."
-sleep 15
+echo "Waiting 10 seconds for PostgreSQL to initialize..."
+sleep 10
 
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
     echo "======================================"
     echo "RUNNING POSTGRESQL PROFILE: $PROFILE"
     echo "======================================"
-    run_step "[$PROFILE] PG Driver overhead..." "python driver_overhead_postgre.py"
-    run_step "[$PROFILE] PG Insert benchmark..." "python insert_postgre.py"
-    run_step "[$PROFILE] PG Retrieval benchmark..." "python retrieve_postgre.py"
+    run_step "[$PROFILE] PG Driver overhead..." "~/venv/bin/python driver_overhead_postgre.py"
+    run_step "[$PROFILE] PG Insert benchmark..." "~/venv/bin/python insert_postgre.py"
+    run_step "[$PROFILE] PG Retrieval benchmark..." "~/venv/bin/python retrieve_postgre.py"
 done

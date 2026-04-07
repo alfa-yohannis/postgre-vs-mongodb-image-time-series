@@ -63,8 +63,9 @@ def main() -> None:
         projection = {"ts": 1, "payload_data": 1, "_id": 0}
 
         # Warmup
-        for _ in range(2):
-            docs = list(coll.find(query_filter, projection).sort("ts", 1))
+        for _ in range(settings.aggregation_warmup_runs):
+            cursor = coll.find(query_filter, projection, batch_size=20).sort("ts", 1)
+            for d in cursor: pass
 
         latencies = []
         rows_returned = 0
@@ -72,14 +73,17 @@ def main() -> None:
 
         for run_id in range(1, settings.aggregation_runs + 1):
             t0 = time.perf_counter()
-            docs = list(coll.find(query_filter, projection).sort("ts", 1))
-            # Force materialization of all binary payloads
-            byte_sum = sum(len(d["payload_data"]) for d in docs)
+            cursor = coll.find(query_filter, projection, batch_size=20).sort("ts", 1)
+            byte_sum = 0
+            count = 0
+            for d in cursor:
+                byte_sum += len(d["payload_data"])
+                count += 1
             t1 = time.perf_counter()
 
             latency_ms = (t1 - t0) * 1000.0
             latencies.append(latency_ms)
-            rows_returned = len(docs)
+            rows_returned = count
             total_bytes = byte_sum
 
             print(
