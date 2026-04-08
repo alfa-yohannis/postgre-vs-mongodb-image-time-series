@@ -12,9 +12,14 @@ echo ""
 # ENV SETUP
 # --------------------------------------
 source ~/venv/bin/activate
+PYTHON_BIN="$HOME/venv/bin/python"
+RESULTS_DIR="results"
 
 echo "Cleaning up old CSV results..."
 rm -f *.csv
+rm -f all_summaries.txt
+mkdir -p "$RESULTS_DIR"
+rm -f "$RESULTS_DIR"/*.csv
 
 # --------------------------------------
 # GLOBAL TIMER
@@ -43,7 +48,8 @@ run_step () {
 
 export BENCHMARK_INSERT_RUNS=5
 export BENCHMARK_POINT_READ_RUNS=5
-export BENCHMARK_DRIVER_RUNS=5
+export BENCHMARK_DRIVER_WARMUP_RUNS=20
+export BENCHMARK_DRIVER_RUNS=30
 
 PROFILES=("480p_sd_image" "720p_hd_image" "1080p_fhd_image" "1440p_qhd_image" "4k_uhd_image")
 
@@ -65,9 +71,9 @@ for PROFILE in "${PROFILES[@]}"; do
     echo "RUNNING PROFILE: $PROFILE"
     echo "=============================================="
 
-    run_step "[$PROFILE] PG Driver overhead..." "python driver_overhead_postgre.py"
-    run_step "[$PROFILE] PG (BYTEA) Insert benchmark..." "python insert_postgre.py"
-    run_step "[$PROFILE] PG (BYTEA) Retrieval benchmark..." "python point_read_postgre.py"
+    run_step "[$PROFILE] PG Driver overhead..." "\"$PYTHON_BIN\" driver_overhead_postgre.py"
+    run_step "[$PROFILE] PG (BYTEA) Insert benchmark..." "\"$PYTHON_BIN\" insert_postgre.py"
+    run_step "[$PROFILE] PG (BYTEA) Retrieval benchmark..." "\"$PYTHON_BIN\" point_read_postgre.py"
 done
 
 # --------------------------------------
@@ -88,15 +94,17 @@ for PROFILE in "${PROFILES[@]}"; do
     echo "RUNNING PROFILE: $PROFILE"
     echo "=============================================="
 
-    run_step "[$PROFILE] MinIO Driver overhead..." "python driver_overhead_minio.py"
-    run_step "[$PROFILE] PG+MinIO Insert benchmark..." "python insert_postgre_minio.py"
-    run_step "[$PROFILE] PG+MinIO Retrieval benchmark..." "python point_read_postgre_minio.py"
+    run_step "[$PROFILE] MinIO Driver overhead..." "\"$PYTHON_BIN\" driver_overhead_minio.py"
+    run_step "[$PROFILE] PG+MinIO Insert benchmark..." "\"$PYTHON_BIN\" insert_postgre_minio.py"
+    run_step "[$PROFILE] PG+MinIO Retrieval benchmark..." "\"$PYTHON_BIN\" point_read_postgre_minio.py"
 done
 
 # --------------------------------------
 # GENERATE FINAL PLOTS
 # --------------------------------------
-run_step "Generating scaling PDFs..." "python boxplot.py"
+run_step "Generating scaling PDFs..." "\"$PYTHON_BIN\" boxplot.py"
+run_step "Generating aggregate helper outputs..." "\"$PYTHON_BIN\" aggregate_results.py"
+run_step "Generating final summary CSV..." "\"$PYTHON_BIN\" stat_summary.py"
 
 # --------------------------------------
 # TOTAL TIME REPORT
