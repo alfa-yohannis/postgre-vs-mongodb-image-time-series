@@ -27,7 +27,7 @@
 \maketitle
 
 \begin{abstract}
-Smart building and facility-monitoring systems increasingly persist camera frames together with timestamped metadata, making storage-engine choice relevant not only for performance but also for operational carbon cost. This paper compares two architectures for image-based time-series workloads: PostgreSQL with TimescaleDB storing images inline as \texttt{BYTEA} (PG), and PostgreSQL with TimescaleDB externalising binaries to MinIO object storage while retaining metadata in the database (PM). Using isolated Docker deployments on an Ubuntu~24.04.3 host with an 11th Gen Intel Core i7-1165G7 processor, 15.3~GB RAM, and CodeCarbon machine-mode tracking, we benchmark seven quality-90 JPEG resolutions from 360p to 5K. The results show a resolution-dependent crossover. PG is faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. Latest-payload retrieval is nearly tied at the smallest profiles and PM is faster from 720p onward, reaching a $6.5\times$ latency advantage at 5K. Measured whole-phase totals show PM consuming 0.012286~kWh and emitting 8305~mg CO$_2$eq versus PG's 0.014912~kWh and 10080~mg CO$_2$eq, a 17.6\% reduction. Per-profile estimates show PM emits more at 360p--1080p but less from 1440p upward. These findings suggest inline \texttt{BYTEA} remains attractive for lower-resolution ingest-heavy workloads, whereas externalised object storage becomes preferable once payload size and retrieval sensitivity dominate.
+Smart building and facility-monitoring systems increasingly persist camera frames together with timestamped metadata, making storage-engine choice relevant not only for performance but also for operational carbon cost. This paper compares two architectures for image-based time-series workloads: PostgreSQL with TimescaleDB storing images inline as \texttt{BYTEA} (PG), and PostgreSQL with TimescaleDB externalising binaries to MinIO object storage while retaining metadata in the database (PM). Using isolated Docker deployments with machine-level carbon tracking, we benchmark seven quality-90 JPEG resolutions from 360p to 5K. The results show resolution-dependent crossover behaviour across the measured metrics. For insertion, PG remains faster from the smallest profiles through 1440p, reaching up to about eight times the throughput of PM, while PM becomes faster at 4K and 5K. For latest-payload point reads, PG is only marginally faster at the two smallest profiles, whereas PM becomes faster from 720p onward and is about eight times faster at 5K. At the whole-phase level, PM reduces both energy use and CO$_2$-equivalent emissions by about 27\%. Profile-level estimates indicate that this carbon advantage appears only once image size becomes large enough, with PM emitting more at small profiles but less from 1440p upward. These findings suggest that inline \texttt{BYTEA} may remain suitable for lower-resolution ingest-heavy workloads on this benchmark, whereas externalised object storage may become more suitable as payload size, point-read sensitivity, and operational carbon become more important design considerations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -62,7 +62,7 @@ The carbon footprint of software systems has also attracted increasing attention
 \label{sec:methodology}
 
 \subsection{Hardware and Software Environment}
-All experiments run on a Lenovo ThinkPad L13 laptop running Ubuntu~24.04.3~LTS with Linux kernel 6.8.0-90-generic. The machine provides an 11th Gen Intel Core i7-1165G7 processor (4 cores / 8 threads, 2.80~GHz base, 4.70~GHz max), 15.3~GB RAM, and a 476.9~GB Samsung MZVL4512HBLU-00BL7 NVMe SSD. CodeCarbon detects the host in Indonesia (Jakarta region) and operates in \texttt{tracking\_mode=machine}, using host-level CPU and RAM measurements for the benchmark phases.
+All experiments run on a single host running Ubuntu~24.04.4~LTS with Linux kernel 6.8.0-107-generic. The machine provides an 11th Gen Intel Core i9-11900H processor (8 cores / 16 threads, 2.50~GHz base, 4.90~GHz max), 30.99~GB RAM, and a 1.9~TB Samsung MZVL22T0HBLB-00BH1 NVMe SSD. CodeCarbon detects the host in Indonesia (Banten region) and operates in \texttt{tracking\_mode=machine}, using host-level CPU and RAM measurements for the benchmark phases.
 
 \begin{table}[htbp]
 \centering
@@ -77,11 +77,11 @@ Docker          & 29.4.0 \\
 Docker Compose  & v5.1.1 \\
 PostgreSQL      & 15 + TimescaleDB (\texttt{latest-pg15}) \\
 MinIO           & \texttt{minio/minio:latest} \\
-Python          & 3.12.3 \\
+Python          & 3.14.3 \\
 psycopg2        & 2.9.11 \\
 minio           & 7.2.20 \\
-Pillow          & 12.1.0 \\
-CodeCarbon      & 3.2.5 \\
+Pillow          & 12.2.0 \\
+CodeCarbon      & 3.2.6 \\
 \hline
 \end{tabular}
 \end{table}
@@ -101,36 +101,34 @@ The benchmark runner wraps the PostgreSQL-only and PostgreSQL+MinIO phases separ
 
 To obtain per-profile carbon estimates, we apply a constant power-rate model to the measured phase totals. For a phase with total energy $E$, emissions $C$, and duration $T$, we derive average rates $E/T$ and $C/T$ and multiply them by each profile's measured insert and point-read durations. These per-profile values are estimates rather than direct measurements, while the phase-level totals remain directly measured by CodeCarbon.
 
-\begin{table*}[htbp]
+\begin{table}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Insert Throughput, Point-Read Latency, and Storage Amplification (2,000 rows)}
+\caption{Insert Throughput, Point-Read Latency, and Storage Amplification (dataset size: 2,000 rows)}
 \label{tab:performance_summary}
-\resizebox{\textwidth}{!}{%
 \begin{tabular}{l rr rr rr}
 \hline
-\textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Point Read (ms)}} & \multicolumn{2}{c}{\textbf{Storage Amp.}} \\
- & PG & PM & PG & PM & PG & PM \\
+\textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Point Read (ms)}} & \multicolumn{2}{c}{\textbf{Storage amp.}} \\
+ & \textbf{PG} & \textbf{PM} & \textbf{PG} & \textbf{PM} & \textbf{PG} & \textbf{PM} \\
 \hline
-360p  & \textbf{424.23} & 189.52 & 1.777 & \textbf{1.338} & 1.0454 & \textbf{1.0029} \\
-480p  & \textbf{407.13} & 74.71 & \textbf{1.253} & 1.329 & 1.0435 & \textbf{1.0017} \\
-720p  & \textbf{164.05} & 61.37 & 2.615 & \textbf{1.524} & 1.0394 & \textbf{1.0007} \\
-1080p & \textbf{71.95} & 51.16 & 4.932 & \textbf{1.631} & 1.0388 & \textbf{1.0003} \\
-1440p & \textbf{39.60} & 36.91 & 7.358 & \textbf{2.195} & 1.0390 & \textbf{1.0002} \\
-4K    & 16.72 & \textbf{24.28} & 17.563 & \textbf{3.082} & 1.0378 & \textbf{1.0001} \\
-5K    & 8.55 & \textbf{10.85} & 27.208 & \textbf{4.167} & 1.0376 & \textbf{1.0001} \\
+360p  & \textbf{738.32} & 104.05 & \textbf{0.720} & 1.717 & 1.0453 & \textbf{1.0029} \\
+480p  & \textbf{475.75} & 56.88 & \textbf{1.017} & 1.163 & 1.0435 & \textbf{1.0017} \\
+720p  & \textbf{205.12} & 51.69 & 2.589 & \textbf{1.767} & 1.0394 & \textbf{1.0007} \\
+1080p & \textbf{91.86} & 39.02 & 3.641 & \textbf{2.352} & 1.0388 & \textbf{1.0003} \\
+1440p & \textbf{50.51} & 35.47 & 7.909 & \textbf{2.280} & 1.0390 & \textbf{1.0002} \\
+4K    & 23.04 & \textbf{28.49} & 14.942 & \textbf{2.461} & 1.0378 & \textbf{1.0001} \\
+5K    & 13.16 & \textbf{15.59} & 27.322 & \textbf{3.360} & 1.0376 & \textbf{1.0001} \\
 \hline
-\multicolumn{7}{l}{\footnotesize PG = PostgreSQL+TimescaleDB with inline \texttt{BYTEA}. PM = PostgreSQL+TimescaleDB+MinIO.} \\
 \end{tabular}
-}
-\end{table*}
+
+\footnotesize PG = PostgreSQL+TimescaleDB with inline \texttt{BYTEA}. PM = PostgreSQL+TimescaleDB+MinIO.
+\end{table}
 
 \begin{table*}[htbp]
 \centering
-\renewcommand{\arraystretch}{1.05}
+\renewcommand{\arraystretch}{1.1}
 \caption{Per-Profile Carbon Footprint Estimates from the Constant Power-Rate Model}
 \label{tab:carbon_summary}
-\resizebox{\textwidth}{!}{%
 \begin{tabular}{l rr rr rr rr rr}
 \hline
 \textbf{Res.}
@@ -141,19 +139,18 @@ To obtain per-profile carbon estimates, we apply a constant power-rate model to 
   & \multicolumn{2}{c}{\textbf{Emissions (mg CO$_2$eq)}} \\
   & PG & PM & PG & PM & PG & PM & PG & PM & PG & PM \\
 \hline
-360p  & 23.6 & 53.6 & 150.2 & 289.1 & 84.6 & 140.3 & 65.6 & 148.8 & 101.5 & 195.4 \\
-480p  & 24.6 & 137.8 & 156.3 & 743.6 & 88.0 & 361.0 & 68.3 & 382.7 & 105.7 & 502.6 \\
-720p  & 61.1 & 164.9 & 388.5 & 889.9 & 218.8 & 431.9 & 169.7 & 457.9 & 262.6 & 601.5 \\
-1080p & 139.3 & 196.3 & 886.2 & 1059.5 & 499.1 & 514.3 & 387.0 & 545.2 & 599.0 & 716.1 \\
-1440p & 252.7 & 272.8 & 1607.3 & 1472.5 & 905.3 & 714.8 & 702.0 & 757.7 & 1086.4 & 995.3 \\
-4K    & 600.2 & 414.4 & 3817.0 & 2236.7 & 2149.9 & 1085.7 & 1667.1 & 1151.0 & 2580.0 & 1511.8 \\
-5K    & 1171.4 & 924.5 & 7449.5 & 4990.3 & 4195.8 & 2422.3 & 3253.7 & 2568.0 & 5035.4 & 3373.1 \\
+360p  & 17.3 & 103.6 & 218.4 & 979.3 & 122.5 & 403.9 & 96.0 & 575.4 & 147.6 & 662.0 \\
+480p  & 27.4 & 183.9 & 346.7 & 1738.4 & 194.4 & 716.9 & 152.3 & 1021.5 & 234.3 & 1175.0 \\
+720p  & 62.3 & 202.3 & 788.3 & 1912.6 & 442.0 & 788.8 & 346.3 & 1123.8 & 532.8 & 1292.8 \\
+1080p & 141.6 & 273.8 & 1790.7 & 2588.8 & 1004.1 & 1067.7 & 786.6 & 1521.2 & 1210.4 & 1749.9 \\
+1440p & 254.3 & 301.2 & 3216.1 & 2847.6 & 1803.3 & 1174.4 & 1412.7 & 1673.2 & 2173.8 & 1924.8 \\
+4K    & 564.6 & 371.8 & 7140.1 & 3514.8 & 4003.7 & 1449.6 & 3136.5 & 2065.3 & 4826.2 & 2375.8 \\
+5K    & 993.0 & 671.1 & 12558.4 & 6344.6 & 7041.8 & 2616.6 & 5516.6 & 3728.0 & 8488.6 & 4288.5 \\
 \hline
 \end{tabular}
-}
 \vspace{2pt}
 \begin{minipage}{\textwidth}
-\footnotesize Measured whole-phase totals including driver overhead, warm-up, and setup: PG = 0.014912~kWh / 10079.6~mg CO$_2$eq; PM = 0.012286~kWh / 8304.8~mg CO$_2$eq.
+\footnotesize Measured whole-phase totals including driver overhead, warm-up, and setup: PG = 0.029330~kWh / 19824.8~mg CO$_2$eq; PM = 0.021427~kWh / 14483.0~mg CO$_2$eq.
 \end{minipage}
 \end{table*}
 
@@ -170,65 +167,65 @@ To obtain per-profile carbon estimates, we apply a constant power-rate model to 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/boxplot_retrieval_latency.pdf}
-\caption{Latest-payload binary retrieval latency across 360p--5K. PG is slightly faster only at 480p; PM is faster for the remaining profiles and the gap widens sharply at 4K and 5K.}
+\caption{Latest-payload point-read latency across 360p--5K. PG is slightly faster at 360p and 480p, while PM is faster from 720p onward and the gap widens sharply at 4K and 5K.}
 \label{fig:retrieval_latency}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\columnwidth]{figures/carbon_footprint.pdf}
-\caption{Estimated per-profile CO$_2$eq emissions (mg) split into insert and retrieval contributions. PM emits more at small profiles but less from 1440p upward.}
-\label{fig:carbon_footprint}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
+\includegraphics[width=.9\textwidth]{figures/carbon_footprint.pdf}
+\caption{Estimated per-profile CO$_2$eq emissions (mg) split into insert and point-read contributions. PM emits more at small profiles but less from 1440p upward.}
+\label{fig:carbon_footprint}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
 \includegraphics[width=.9\textwidth]{figures/carbon_breakdown.pdf}
-\caption{Per-profile energy breakdown (CPU + RAM, stacked bars) with benchmark duration shown as dashed lines. The crossover in PM's carbon advantage follows the crossover in end-to-end benchmark time.}
+\caption{Per-profile energy breakdown (CPU + RAM, stacked bars) with benchmark duration shown as dashed lines. PM's carbon crossover is consistent with the crossover in end-to-end benchmark time.}
 \label{fig:carbon_breakdown}
 \end{figure*}
 
 \subsection{Supporting Performance Observations}
 \label{subsec:performance}
-Table~\ref{tab:performance_summary} and Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency} show that insertion throughput exhibits a clear write-side crossover. PG is faster from 360p through 1440p, with especially large margins at 480p (407.13 vs.\ 74.71~rows/s, $5.45\times$) and 720p (164.05 vs.\ 61.37~rows/s, $2.67\times$). The gap narrows steadily as payload size increases and reverses at 4K, where PM reaches 24.28 vs.\ 16.72~rows/s ($1.45\times$ faster), and remains in PM's favour at 5K (10.85 vs.\ 8.55~rows/s, $1.27\times$ faster). On this host, inline \texttt{BYTEA} therefore remains a strong ingest option up to 1440p, but PM becomes more effective once payload sizes reach the largest profiles.
+Table~\ref{tab:performance_summary} and Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency} show a write-side crossover. PG is faster from 360p through 1440p, with especially large margins at 360p (738.32 vs.\ 104.05~rows/s, $7.10\times$) and 480p (475.75 vs.\ 56.88~rows/s, $8.36\times$). The gap narrows steadily as payload size increases and reverses at 4K, where PM reaches 28.49 vs.\ 23.04~rows/s ($1.24\times$ faster), and remains in PM's favour at 5K (15.59 vs.\ 13.16~rows/s, $1.18\times$ faster). On this host, inline \texttt{BYTEA} provides higher insert throughput up to 1440p, while PM becomes faster at the two largest profiles.
 
-Latest-payload point-read latency follows a different pattern. PG is slightly faster only at 480p (1.253 vs.\ 1.329~ms), while PM is already faster at 360p (1.338 vs.\ 1.777~ms) and becomes decisively faster from 720p onward. At 1080p, PM reduces latency from 4.932 to 1.631~ms ($3.02\times$ faster); at 4K, from 17.563 to 3.082~ms ($5.70\times$ faster); and at 5K, from 27.208 to 4.167~ms ($6.53\times$ faster). The read-side crossover therefore occurs much earlier than the write-side crossover.
+Latest-payload point-read latency follows a different pattern. PG is slightly faster at the two smallest profiles: 0.720 vs.\ 1.717~ms at 360p and 1.017 vs.\ 1.163~ms at 480p. From 720p onward, PM becomes faster. At 1080p, PM reduces latency from 3.641 to 2.352~ms ($1.55\times$ faster); at 4K, from 14.942 to 2.461~ms ($6.07\times$ faster); and at 5K, from 27.322 to 3.360~ms ($8.13\times$ faster). The read-side crossover therefore occurs earlier than the write-side crossover, but only after the two smallest profiles.
 
-Storage efficiency is consistently in PM's favour. PG remains near $1.04\times$ storage amplification for all profiles, whereas PM stays essentially at raw-payload size, between $1.0029\times$ and $1.0001\times$. At 5K and 2,000 inserted rows, PG occupies 10555.0~MB versus 10172.9~MB for PM, a 382.1~MB gap despite similar logical content.
+PM consistently shows lower storage amplification. PG remains near $1.04\times$ storage amplification for all profiles, whereas PM stays essentially at raw-payload size, between $1.0029\times$ and $1.0001\times$. At 5K and 2,000 inserted rows, PG occupies 10555.0~MB versus 10172.9~MB for PM, a 382.1~MB gap despite similar logical content.
 
-Driver overhead provides useful context. Averaged across the seven profiles, PostgreSQL's driver roundtrip measures 0.075~ms, while MinIO's \texttt{list\_buckets} roundtrip measures 0.469~ms. The MinIO path therefore carries a higher fixed per-request overhead, but this cost is quickly amortised once large image transfers dominate the workload.
+Driver overhead provides additional context. Averaged across the seven profiles, PostgreSQL's driver roundtrip measures 0.062~ms, while the MinIO \texttt{list\_buckets} roundtrip used here measures 0.606~ms. This auxiliary measurement suggests a higher fixed client-side roundtrip on the MinIO path, although it does not by itself determine the end-to-end insert or point-read results.
 
 \subsection{Carbon Footprint (RQ)}
 \label{subsec:carbon_footprint}
-The whole-phase CodeCarbon measurements show that PM is more carbon-efficient overall on this seven-profile benchmark. The PostgreSQL-only phase ran for 2344.8~s, consumed 0.014912~kWh, and emitted 10079.6~mg CO$_2$eq. The PostgreSQL+MinIO phase ran for 2276.1~s, consumed 0.012286~kWh, and emitted 8304.8~mg CO$_2$eq. This corresponds to a \textbf{17.6\% reduction} in both energy and emissions for PM at the phase level.
+The whole-phase CodeCarbon measurements show that PM is more carbon-efficient overall on this seven-profile benchmark. The PostgreSQL-only phase ran for 2319.1~s, consumed 0.029330~kWh, and emitted 19824.8~mg CO$_2$eq. The PostgreSQL+MinIO phase ran for 2266.3~s, consumed 0.021427~kWh, and emitted 14483.0~mg CO$_2$eq. This corresponds to a \textbf{26.9\% reduction} in both energy and emissions for PM at the phase level.
 
-Table~\ref{tab:carbon_summary} and Figures~\ref{fig:carbon_footprint}--\ref{fig:carbon_breakdown} refine that picture by estimating the profile-level contribution of insert and retrieval work. These estimates show that PM is \emph{not} uniformly greener. At 360p, PM emits 195.4~mg CO$_2$eq versus 101.5~mg for PG (+92.5\%). At 480p, the PM penalty is much larger (502.6 vs.\ 105.7~mg, +375.7\%), reflecting its poor small-payload insert throughput. PM remains worse at 720p and 1080p, though the gap narrows substantially by 1080p (716.1 vs.\ 599.0~mg, +19.6\%).
+Table~\ref{tab:carbon_summary} and Figures~\ref{fig:carbon_footprint}--\ref{fig:carbon_breakdown} refine that picture by estimating the profile-level contribution of insert and point-read work. These estimates show that PM is \emph{not} uniformly greener. At 360p, PM emits 662.0~mg CO$_2$eq versus 147.6~mg for PG (+348.3\%). At 480p, the PM penalty is even larger (1175.0 vs.\ 234.3~mg, +401.4\%), reflecting its poor small-payload insert throughput. PM remains worse at 720p and 1080p, though the gap narrows substantially by 1080p (1749.9 vs.\ 1210.4~mg, +44.6\%).
 
-The carbon crossover occurs at 1440p. There, PM emits 995.3~mg versus 1086.4~mg for PG, an 8.4\% advantage. At 4K the PM advantage becomes pronounced, dropping from 2580.0 to 1511.8~mg (-41.4\%), and at 5K the reduction remains substantial at 3373.1 versus 5035.4~mg (-33.0\%). This behaviour mirrors the throughput crossover observed in Section~\ref{subsec:performance}: once payload sizes become large enough for PostgreSQL's inline binary handling to dominate execution time, PM's separate object-storage path becomes both faster and lower-carbon.
+The carbon crossover occurs at 1440p. There, PM emits 1924.8~mg versus 2173.8~mg for PG, an 11.5\% advantage. At 4K the PM advantage becomes pronounced, dropping from 4826.2 to 2375.8~mg (-50.8\%), and at 5K the reduction remains substantial at 4288.5 versus 8488.6~mg (-49.5\%). This pattern is consistent with the throughput crossover observed in Section~\ref{subsec:performance}: once payload sizes become large enough for PostgreSQL's inline binary handling to dominate execution time, PM's separate object-storage path is associated with both faster completion and lower estimated carbon.
 
-The difference between the measured whole-phase totals and the summed profile estimates is expected. The per-profile table only allocates insert and retrieval time, whereas the tracked phases also include warm-up activity, driver-overhead measurements, and setup work. The directly measured phase totals therefore remain the correct basis for the overall RQ answer, while the profile estimates explain where that overall difference originates.
+The difference between the measured whole-phase totals and the summed profile estimates is expected. The per-profile table only allocates insert and point-read time, whereas the tracked phases also include warm-up activity, driver-overhead measurements, and setup work. The directly measured phase totals therefore remain the correct basis for the overall RQ answer, while the profile estimates explain where that overall difference originates.
 
 \section{Discussion}
 \label{sec:discussion}
 
-\textbf{Resolution-dependent crossover.} The updated benchmark does not support a universal ``always use MinIO'' or ``always use inline \texttt{BYTEA}'' conclusion. PG remains the better write engine through 1440p on this machine, even though PM already provides superior retrieval latency at most profiles. From 4K onward, PM becomes the better choice for both insertion throughput and point-read latency, and from 1440p onward it also becomes the lower-carbon option.
+\textbf{Resolution-dependent crossover.} The updated benchmark does not support a universal ``always use MinIO'' or ``always use inline \texttt{BYTEA}'' conclusion. PG remains faster for writes through 1440p on this machine and also keeps a small point-read advantage at 360p and 480p. From 720p onward, however, PM becomes the faster point-read path; from 4K onward it also becomes the faster write path; and from 1440p onward it becomes the lower-carbon option.
 
-\textbf{Why PostgreSQL leads at smaller writes.} At lower resolutions, PG benefits from batched inserts that avoid an extra object-store request per payload. The images are small enough that PostgreSQL's inline binary handling and TOAST overhead remain tolerable, while PM still pays the fixed cost of a MinIO PUT plus a relational metadata write. That is why PM performs particularly poorly at 480p despite its much better storage amplification.
+\textbf{Why PostgreSQL leads at smaller writes.} At lower resolutions, PG benefits from batched inserts that avoid an extra object-store request per payload. The images are small enough that PostgreSQL's inline binary handling and TOAST overhead remain tolerable, while PM still pays the fixed cost of a MinIO PUT plus a relational metadata write. That is why PM performs particularly poorly at 360p and 480p despite its much better storage amplification.
 
-\textbf{Why PostgreSQL+MinIO wins at large payloads.} As payload size grows, the cost of keeping the binary within the relational engine rises sharply. PostgreSQL must still log, manage, and retrieve large values through the database path, whereas PM lets PostgreSQL manage only metadata while MinIO streams the object directly. This architectural separation turns into both a performance advantage and a carbon advantage once the binary payload is large enough, which in our measurements happens around 1440p for emissions and 4K for insertion throughput.
+\textbf{Why PostgreSQL+MinIO becomes faster at large payloads.} As payload size grows, the cost of keeping the binary within the relational engine rises sharply. PostgreSQL must still log, manage, and retrieve large values through the database path, whereas PM lets PostgreSQL manage only metadata while MinIO streams the object directly. This architectural separation is consistent with the observed performance and carbon advantages once the binary payload is large enough, which in our measurements happens around 1440p for emissions and 4K for insertion throughput.
 
-\textbf{Implications for system design.} These results suggest a workload-sensitive deployment rule. If the system is dominated by lower-resolution ingestion and operational simplicity is a priority, inline \texttt{BYTEA} storage remains defensible. If the system needs low-latency latest-frame access or expects 4K--5K payloads, externalising binaries to object storage becomes the more robust choice. PM also offers consistently better storage efficiency, which compounds as retention increases.
+\textbf{Implications for system design.} These results suggest a workload-sensitive deployment heuristic. If the system is dominated by lower-resolution ingestion and operational simplicity is a priority, inline \texttt{BYTEA} storage may remain practical. If the system needs lower-latency latest-frame access from 720p upward, or expects sustained 4K--5K payloads, externalising binaries to object storage may become the more suitable choice. PM also offers consistently better storage efficiency, which compounds as retention increases.
 
-\textbf{Threats to validity.} Results are from a single laptop-class host and a single container topology. Different hardware, distributed object-storage deployments, or more compressible media could shift the exact crossover points. The per-profile carbon table is estimated from whole-phase measurements using a constant power-rate assumption, so it should be interpreted as a benchmark-scoped explanation rather than a hardware-instrumented per-operation trace. Even so, both architectures were benchmarked under identical conditions, making the comparative trends meaningful.
+\textbf{Threats to validity.} Results are from a single host and a single container topology. Different hardware, distributed object-storage deployments, or more compressible media could shift the exact crossover points. The per-profile carbon table is estimated from whole-phase measurements using a constant power-rate assumption, so it should be interpreted as a benchmark-scoped explanation rather than a hardware-instrumented per-operation trace. Even so, both architectures were benchmarked under identical conditions, making the comparative trends informative within this benchmark.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
 This study evaluated the performance and carbon footprint of two storage architectures for image-based time-series workloads: PostgreSQL with inline \texttt{BYTEA} storage and PostgreSQL with externalised MinIO object storage.
 
-\textbf{RQ answer:} The better architecture depends on payload size and workload emphasis, but the complete seven-profile benchmark on this machine favours PostgreSQL+MinIO overall. Measured whole-phase totals show PM emitting 8304.8~mg CO$_2$eq versus PostgreSQL's 10079.6~mg, a \textbf{17.6\% reduction}. PG remains faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. For latest-payload retrieval, PM is faster at every profile except a slight PostgreSQL advantage at 480p, and the gap reaches $6.5\times$ at 5K.
+\textbf{RQ answer:} The better architecture depends on payload size and workload emphasis, but the complete seven-profile benchmark on this machine shows lower measured whole-phase energy use and emissions for PostgreSQL+MinIO overall. Measured whole-phase totals show PM emitting 14483.0~mg CO$_2$eq versus PostgreSQL's 19824.8~mg, a \textbf{26.9\% reduction}. PG remains faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. For latest-payload point reads, PG is slightly faster at 360p and 480p, but PM is faster from 720p onward and the gap reaches $8.1\times$ at 5K.
 
-The key practical finding is therefore a pair of crossover points rather than a universal winner. On this host, inline PostgreSQL is attractive for smaller ingest-heavy workloads, while PostgreSQL+MinIO becomes the more compelling design as binary payload size increases and retrieval or carbon efficiency become dominant concerns. Future work should evaluate the same architectures on multi-node deployments and under higher client concurrency to determine how stable these crossover points remain outside a single-host setup.
+The key practical finding is therefore a set of crossover points rather than a universal winner. On this host, inline PostgreSQL may suit smaller ingest-heavy workloads, while PostgreSQL+MinIO may become more suitable as binary payload size increases and point-read or carbon efficiency become more important. Future work should evaluate the same architectures on multi-node deployments and under higher client concurrency to determine how stable these crossover points remain outside a single-host setup.
 
 \section*{Acknowledgment}
 [Hidden for double-blind review]

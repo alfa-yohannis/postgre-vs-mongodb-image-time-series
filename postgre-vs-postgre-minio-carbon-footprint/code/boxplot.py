@@ -25,13 +25,13 @@ from reporting_utils import (
 
 matplotlib.rcParams.update(
     {
-        "font.size": 22,
-        "axes.titlesize": 24,
-        "axes.labelsize": 22,
-        "xtick.labelsize": 20,
-        "ytick.labelsize": 20,
-        "legend.fontsize": 16,
-        "figure.titlesize": 24,
+        "font.size": 14,
+        "axes.titlesize": 16,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 13,
+        "ytick.labelsize": 13,
+        "legend.fontsize": 13,
+        "figure.titlesize": 16,
     }
 )
 
@@ -39,6 +39,8 @@ PG_COLOR = "#4C72B0"
 PM_COLOR = "#55A868"
 PG_LIGHT = "#A8C4E0"
 PM_LIGHT = "#B7E0C1"
+FPS_60_COLOR = "#9E3D32"
+FPS_30_COLOR = "#C98A2F"
 
 POSTGRES_INSERT_SUMMARY = "results_postgres_insert_summary"
 POSTGRES_MINIO_INSERT_SUMMARY = "results_postgres_minio_insert_summary"
@@ -105,7 +107,7 @@ def plot_insert_throughput() -> None:
         "std_rows_per_sec",
     )
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 4.5))
     if pg_means:
         plt.errorbar(
             labels,
@@ -115,7 +117,7 @@ def plot_insert_throughput() -> None:
             marker="o",
             capsize=5,
             lw=2.5,
-            markersize=9,
+            markersize=8,
             color=PG_COLOR,
         )
     if pm_means:
@@ -127,12 +129,12 @@ def plot_insert_throughput() -> None:
             marker="^",
             capsize=5,
             lw=2.5,
-            markersize=9,
+            markersize=8,
             color=PM_COLOR,
         )
 
-    plt.axhline(y=60, color="red", linestyle=":", linewidth=2.0, alpha=0.5, label="60 fps")
-    plt.axhline(y=30, color="orange", linestyle="--", linewidth=2.0, alpha=0.5, label="30 fps")
+    plt.axhline(y=60, color=FPS_60_COLOR, linestyle=":", linewidth=2.0, alpha=0.65, label="60 fps")
+    plt.axhline(y=30, color=FPS_30_COLOR, linestyle="--", linewidth=2.0, alpha=0.65, label="30 fps")
     plt.title("Insert Throughput vs Image Resolution")
     plt.xlabel("Image Resolution")
     plt.ylabel("Rows per Second")
@@ -161,7 +163,7 @@ def plot_point_read_latency() -> None:
         "std_latency_ms",
     )
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(8, 4.5))
     if pg_means:
         plt.errorbar(
             labels,
@@ -171,7 +173,7 @@ def plot_point_read_latency() -> None:
             marker="o",
             capsize=5,
             lw=2.5,
-            markersize=9,
+            markersize=8,
             color=PG_COLOR,
         )
     if pm_means:
@@ -183,27 +185,27 @@ def plot_point_read_latency() -> None:
             marker="^",
             capsize=5,
             lw=2.5,
-            markersize=9,
+            markersize=8,
             color=PM_COLOR,
         )
 
     plt.axhline(
         y=1000 / 30,
-        color="orange",
+        color=FPS_30_COLOR,
         linestyle="--",
         linewidth=2.0,
-        alpha=0.5,
+        alpha=0.65,
         label="30 fps budget (33.3 ms)",
     )
     plt.axhline(
         y=1000 / 60,
-        color="red",
+        color=FPS_60_COLOR,
         linestyle=":",
         linewidth=2.0,
-        alpha=0.5,
+        alpha=0.65,
         label="60 fps budget (16.7 ms)",
     )
-    plt.title("Binary Retrieval Latency vs Image Resolution")
+    plt.title("Point-Read Latency vs Image Resolution")
     plt.xlabel("Image Resolution")
     plt.ylabel("Latency (ms)")
     plt.legend()
@@ -230,7 +232,7 @@ def plot_carbon_footprint() -> None:
     pm_insert = [float(row["pm_insert_emissions_mg"]) for row in rows]
     pm_retrieval = [float(row.get("pm_retrieval_emissions_mg", row["pm_point_read_emissions_mg"])) for row in rows]
 
-    fig, ax = plt.subplots(figsize=(11, 6))
+    fig, ax = plt.subplots(figsize=(10, 5.5))
 
     ax.bar(
         pg_x,
@@ -238,8 +240,6 @@ def plot_carbon_footprint() -> None:
         width,
         label="PostgreSQL — Insert",
         color=PG_COLOR,
-        edgecolor=PG_COLOR,
-        linewidth=0.8,
         zorder=3,
     )
     ax.bar(
@@ -249,9 +249,6 @@ def plot_carbon_footprint() -> None:
         label="PostgreSQL — Retrieval",
         bottom=pg_insert,
         color=PG_LIGHT,
-        edgecolor=PG_COLOR,
-        linewidth=0.8,
-        hatch="//",
         zorder=3,
     )
     ax.bar(
@@ -260,8 +257,6 @@ def plot_carbon_footprint() -> None:
         width,
         label="PostgreSQL+MinIO — Insert",
         color=PM_COLOR,
-        edgecolor=PM_COLOR,
-        linewidth=0.8,
         zorder=3,
     )
     ax.bar(
@@ -271,9 +266,6 @@ def plot_carbon_footprint() -> None:
         label="PostgreSQL+MinIO — Retrieval",
         bottom=pm_insert,
         color=PM_LIGHT,
-        edgecolor=PM_COLOR,
-        linewidth=0.8,
-        hatch="\\\\",
         zorder=3,
     )
 
@@ -281,7 +273,8 @@ def plot_carbon_footprint() -> None:
         pg_x,
         [left + right for left, right in zip(pg_insert, pg_retrieval)],
         marker="o",
-        lw=2.5,
+        lw=2,
+        markersize=7,
         color=PG_COLOR,
         label="PostgreSQL — Total",
         zorder=5,
@@ -289,8 +282,9 @@ def plot_carbon_footprint() -> None:
     ax.plot(
         pm_x,
         [left + right for left, right in zip(pm_insert, pm_retrieval)],
-        marker="^",
-        lw=2.5,
+        marker="s",
+        lw=2,
+        markersize=7,
         color=PM_COLOR,
         label="PostgreSQL+MinIO — Total",
         zorder=5,
@@ -300,7 +294,7 @@ def plot_carbon_footprint() -> None:
     ax.set_xticklabels(labels)
     ax.set_xlabel("Image Resolution")
     ax.set_ylabel("Estimated CO2eq (mg)")
-    ax.set_title("Carbon Emissions Contribution: Insert vs Retrieval")
+    ax.set_title("Carbon Emissions Contribution: Insert vs Point Read")
     style_axes(ax)
     ax.legend(fontsize=11, loc="upper left")
     fig.tight_layout()
@@ -328,7 +322,7 @@ def plot_carbon_breakdown() -> None:
     pg_duration = [float(row["pg_duration_sec"]) for row in rows]
     pm_duration = [float(row["pm_duration_sec"]) for row in rows]
 
-    fig, ax_energy = plt.subplots(figsize=(12, 6))
+    fig, ax_energy = plt.subplots(figsize=(11, 5.5))
     ax_duration = ax_energy.twinx()
 
     ax_energy.bar(pg_x, pg_cpu, width, label="PG - CPU", color=PG_COLOR, zorder=3)
@@ -336,8 +330,8 @@ def plot_carbon_breakdown() -> None:
     ax_energy.bar(pm_x, pm_cpu, width, label="PM - CPU", color=PM_COLOR, zorder=3)
     ax_energy.bar(pm_x, pm_ram, width, label="PM - RAM", bottom=pm_cpu, color=PM_LIGHT, zorder=3)
 
-    ax_energy.plot(pg_x, [cpu + ram for cpu, ram in zip(pg_cpu, pg_ram)], marker="o", lw=2, color=PG_COLOR, label="PG - Total Energy", zorder=5)
-    ax_energy.plot(pm_x, [cpu + ram for cpu, ram in zip(pm_cpu, pm_ram)], marker="^", lw=2, color=PM_COLOR, label="PM - Total Energy", zorder=5)
+    ax_energy.plot(pg_x, [cpu + ram for cpu, ram in zip(pg_cpu, pg_ram)], marker="o", lw=2, markersize=7, color=PG_COLOR, label="PG - Total Energy", zorder=5)
+    ax_energy.plot(pm_x, [cpu + ram for cpu, ram in zip(pm_cpu, pm_ram)], marker="s", lw=2, markersize=7, color=PM_COLOR, label="PM - Total Energy", zorder=5)
 
     ax_duration.plot(pg_x, pg_duration, lw=2.5, color=PG_COLOR, linestyle="--", label="PG - Duration", zorder=5)
     ax_duration.plot(pm_x, pm_duration, lw=2.5, color=PM_COLOR, linestyle="--", label="PM - Duration", zorder=5)
@@ -358,7 +352,7 @@ def plot_carbon_breakdown() -> None:
     ax_energy.legend(
         handles_energy + handles_duration,
         labels_energy + labels_duration,
-        fontsize=11,
+        fontsize=10,
         loc="upper left",
     )
 

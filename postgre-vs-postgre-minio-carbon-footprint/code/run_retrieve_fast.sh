@@ -28,7 +28,7 @@ for PROFILE in "${PROFILES[@]}"; do
 done
 
 echo "=============================================="
-echo "PHASE 2: PG + MINIO (fast insert + retrieval + point read)"
+echo "PHASE 2: PG + MINIO (fast insert + retrieval)"
 echo "=============================================="
 docker compose down -v
 docker compose up -d timescaledb minio
@@ -39,7 +39,6 @@ for PROFILE in "${PROFILES[@]}"; do
     echo "--- PM PROFILE: $PROFILE ---"
     "$PYTHON_BIN" insert_postgre_minio.py
     "$PYTHON_BIN" retrieve_postgre_minio.py
-    "$PYTHON_BIN" point_read_postgre_minio.py
 done
 
 "$PYTHON_BIN" boxplot.py

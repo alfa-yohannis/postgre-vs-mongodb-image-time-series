@@ -78,7 +78,6 @@ run_step () {
 }
 
 export BENCHMARK_INSERT_RUNS=5
-export BENCHMARK_POINT_READ_RUNS=5
 export BENCHMARK_DRIVER_WARMUP_RUNS=10
 export BENCHMARK_DRIVER_RUNS=10
 
@@ -95,7 +94,6 @@ for PROFILE in "${PROFILES[@]}"; do
     run_step "[$PROFILE] MinIO Driver overhead..." "\"$PYTHON_BIN\" driver_overhead_minio.py"
     run_step "[$PROFILE] PG+MinIO Insert benchmark..." "\"$PYTHON_BIN\" insert_postgre_minio.py"
     run_step "[$PROFILE] PG+MinIO Retrieval benchmark..." "\"$PYTHON_BIN\" retrieve_postgre_minio.py"
-    run_step "[$PROFILE] PG+MinIO Point-read benchmark..." "\"$PYTHON_BIN\" point_read_postgre_minio.py"
 done
 
 TOTAL_END=$(date +%s)

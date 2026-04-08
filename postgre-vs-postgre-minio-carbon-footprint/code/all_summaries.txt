@@ -1,0 +1,43 @@
+PG vs PM benchmark summary
+
+Profile: 360p
+  PG insert: 738.32 rows/s | amp=1.0453 | disk=194.056 MB
+  PM insert: 104.05 rows/s | amp=1.0029 | disk=186.199 MB
+  PG point read: 0.720 ms
+  PM point read: 1.717 ms
+
+Profile: 480p
+  PG insert: 475.75 rows/s | amp=1.0435 | disk=343.073 MB
+  PM insert: 56.88 rows/s | amp=1.0017 | disk=329.311 MB
+  PG point read: 1.017 ms
+  PM point read: 1.163 ms
+
+Profile: 720p
+  PG insert: 205.12 rows/s | amp=1.0394 | disk=758.539 MB
+  PM insert: 51.69 rows/s | amp=1.0007 | disk=730.318 MB
+  PG point read: 2.589 ms
+  PM point read: 1.767 ms
+
+Profile: 1080p
+  PG insert: 91.86 rows/s | amp=1.0388 | disk=1671.356 MB
+  PM insert: 39.02 rows/s | amp=1.0003 | disk=1609.483 MB
+  PG point read: 3.641 ms
+  PM point read: 2.352 ms
+
+Profile: 1440p
+  PG insert: 50.51 rows/s | amp=1.0390 | disk=2907.586 MB
+  PM insert: 35.47 rows/s | amp=1.0002 | disk=2798.862 MB
+  PG point read: 7.909 ms
+  PM point read: 2.280 ms
+
+Profile: 4K
+  PG insert: 23.04 rows/s | amp=1.0378 | disk=6211.594 MB
+  PM insert: 28.49 rows/s | amp=1.0001 | disk=5986.045 MB
+  PG point read: 14.942 ms
+  PM point read: 2.461 ms
+
+Profile: 5K
+  PG insert: 13.16 rows/s | amp=1.0376 | disk=10555.047 MB
+  PM insert: 15.59 rows/s | amp=1.0001 | disk=10172.920 MB
+  PG point read: 27.322 ms
+  PM point read: 3.360 ms
