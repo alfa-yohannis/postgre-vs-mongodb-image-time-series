@@ -1,136 +1,143 @@
-import csv
-import statistics
+from __future__ import annotations
+
 from datetime import datetime, timezone
+from pathlib import Path
+
+from carbon_utils import build_comparison_breakdown
+from benchmark_utils import append_row
+from reporting_utils import (
+    PROFILE_ORDER,
+    load_driver_rows,
+    load_last_rows_by_profile,
+    profile_label,
+    safe_float,
+)
 
 
-POSTGRES_INSERT_RUNS = "results_postgres_insert_runs.csv"
-POSTGRES_MINIO_INSERT_RUNS = "results_postgres_minio_insert_runs.csv"
-
-POSTGRES_RETRIEVAL_RUNS = "results_postgres_point_read_runs.csv"
-POSTGRES_MINIO_RETRIEVAL_RUNS = "results_postgres_minio_point_read_runs.csv"
-
-POSTGRES_DRIVER_SUMMARY = "results_postgres_driver_summary.csv"
-MINIO_DRIVER_SUMMARY = "results_minio_driver_summary.csv"
-
-POSTGRES_INSERT_SUMMARY = "results_postgres_insert_summary.csv"
-POSTGRES_MINIO_INSERT_SUMMARY = "results_postgres_minio_insert_summary.csv"
+POSTGRES_INSERT_SUMMARY = "results_postgres_insert_summary"
+POSTGRES_MINIO_INSERT_SUMMARY = "results_postgres_minio_insert_summary"
+POSTGRES_POINT_READ_SUMMARY = "results_postgres_point_read_summary"
+POSTGRES_MINIO_POINT_READ_SUMMARY = "results_postgres_minio_point_read_summary"
 
 FINAL_STATS_CSV = "final_stats_summary.csv"
 
 
-def load_column_from_csv(path, column_name):
-    values = []
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            values.append(float(row[column_name]))
-    return values
+def code_dir() -> Path:
+    return Path(__file__).resolve().parent
 
 
-def load_single_value_from_summary(path, column_name):
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        if not rows:
-            raise RuntimeError(f"No data in {path}")
-        return float(rows[-1][column_name])
+def ratio(numerator: float | None, denominator: float | None) -> float | None:
+    if numerator is None or denominator in (None, 0.0):
+        return None
+    return numerator / denominator
 
 
-def append_final_summary(row_dict):
-    fieldnames = list(row_dict.keys())
-    file_exists = False
-    try:
-        with open(FINAL_STATS_CSV):
-            file_exists = True
-    except FileNotFoundError:
-        pass
-
-    with open(FINAL_STATS_CSV, "a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(row_dict)
-
-
-def main():
-    timestamp = datetime.now(timezone.utc).isoformat()
-
-    # INSERT THROUGHPUT
-    pg_insert = load_column_from_csv(POSTGRES_INSERT_RUNS, "rows_per_sec")
-    pg_minio_insert = load_column_from_csv(POSTGRES_MINIO_INSERT_RUNS, "rows_per_sec")
-
-    pg_insert_mean = statistics.mean(pg_insert)
-    pg_insert_std = statistics.stdev(pg_insert)
-    pg_minio_insert_mean = statistics.mean(pg_minio_insert)
-    pg_minio_insert_std = statistics.stdev(pg_minio_insert)
-
-    # RETRIEVAL LATENCY
-    pg_retrieval = load_column_from_csv(POSTGRES_RETRIEVAL_RUNS, "latency_ms")
-    pg_minio_retrieval = load_column_from_csv(POSTGRES_MINIO_RETRIEVAL_RUNS, "latency_ms")
-
-    pg_retrieval_mean = statistics.mean(pg_retrieval)
-    pg_retrieval_std = statistics.stdev(pg_retrieval)
-    pg_minio_retrieval_mean = statistics.mean(pg_minio_retrieval)
-    pg_minio_retrieval_std = statistics.stdev(pg_minio_retrieval)
-
-    # DRIVER OVERHEAD
-    pg_driver_mean = load_single_value_from_summary(POSTGRES_DRIVER_SUMMARY, "mean_latency_ms")
-    pg_driver_std = load_single_value_from_summary(POSTGRES_DRIVER_SUMMARY, "std_latency_ms")
-    minio_driver_mean = load_single_value_from_summary(MINIO_DRIVER_SUMMARY, "mean_latency_ms")
-    minio_driver_std = load_single_value_from_summary(MINIO_DRIVER_SUMMARY, "std_latency_ms")
-
-    # STORAGE SIZE
-    pg_table_mb = load_single_value_from_summary(POSTGRES_INSERT_SUMMARY, "mean_table_total_after_mb")
-    pg_db_mb = load_single_value_from_summary(POSTGRES_INSERT_SUMMARY, "mean_db_size_after_mb")
-    pg_minio_table_mb = load_single_value_from_summary(POSTGRES_MINIO_INSERT_SUMMARY, "mean_table_total_after_mb")
-    pg_minio_db_mb = load_single_value_from_summary(POSTGRES_MINIO_INSERT_SUMMARY, "mean_db_size_after_mb")
-
-    print("\n==============================")
-    print("FINAL STATISTICAL SUMMARY")
-    print("==============================")
-
-    print("\n[INSERT THROUGHPUT] rows/sec")
-    print(f"PG (PostgreSQL BYTEA) : {pg_insert_mean:.2f} +/- {pg_insert_std:.2f}")
-    print(f"PM (PostgreSQL+MinIO) : {pg_minio_insert_mean:.2f} +/- {pg_minio_insert_std:.2f}")
-
-    print("\n[RETRIEVAL LATENCY] ms")
-    print(f"PG (PostgreSQL BYTEA) : {pg_retrieval_mean:.2f} +/- {pg_retrieval_std:.2f}")
-    print(f"PM (PostgreSQL+MinIO) : {pg_minio_retrieval_mean:.2f} +/- {pg_minio_retrieval_std:.2f}")
-
-    print("\n[DRIVER ROUNDTRIP] ms")
-    print(f"PostgreSQL            : {pg_driver_mean:.4f} +/- {pg_driver_std:.4f}")
-    print(f"MinIO                 : {minio_driver_mean:.4f} +/- {minio_driver_std:.4f}")
-
-    print("\n[STORAGE SIZE] MB")
-    print(f"PG Table              : {pg_table_mb:.2f}")
-    print(f"PG DB                 : {pg_db_mb:.2f}")
-    print(f"PM Table              : {pg_minio_table_mb:.2f}")
-    print(f"PM DB                 : {pg_minio_db_mb:.2f}")
-
-    print("==============================\n")
-
-    final_row = {
-        "timestamp": timestamp,
-        "pg_insert_mean": round(pg_insert_mean, 2),
-        "pg_insert_std": round(pg_insert_std, 2),
-        "pg_minio_insert_mean": round(pg_minio_insert_mean, 2),
-        "pg_minio_insert_std": round(pg_minio_insert_std, 2),
-        "pg_retrieval_mean": round(pg_retrieval_mean, 2),
-        "pg_retrieval_std": round(pg_retrieval_std, 2),
-        "pg_minio_retrieval_mean": round(pg_minio_retrieval_mean, 2),
-        "pg_minio_retrieval_std": round(pg_minio_retrieval_std, 2),
-        "pg_driver_mean": round(pg_driver_mean, 4),
-        "pg_driver_std": round(pg_driver_std, 4),
-        "minio_driver_mean": round(minio_driver_mean, 4),
-        "minio_driver_std": round(minio_driver_std, 4),
-        "pg_table_mb": round(pg_table_mb, 2),
-        "pg_db_mb": round(pg_db_mb, 2),
-        "pg_minio_table_mb": round(pg_minio_table_mb, 2),
-        "pg_minio_db_mb": round(pg_minio_db_mb, 2),
+def build_rows() -> list[dict[str, object]]:
+    base_dir = code_dir()
+    pg_insert = load_last_rows_by_profile(base_dir, POSTGRES_INSERT_SUMMARY)
+    pm_insert = load_last_rows_by_profile(base_dir, POSTGRES_MINIO_INSERT_SUMMARY)
+    pg_read = load_last_rows_by_profile(base_dir, POSTGRES_POINT_READ_SUMMARY)
+    pm_read = load_last_rows_by_profile(base_dir, POSTGRES_MINIO_POINT_READ_SUMMARY)
+    pg_driver = load_driver_rows(base_dir, "results_postgres_driver_summary.csv")
+    pm_driver = load_driver_rows(base_dir, "results_minio_driver_summary.csv")
+    carbon_rows = {
+        str(row["profile"]): row
+        for row in build_comparison_breakdown(base_dir)
     }
 
-    append_final_summary(final_row)
-    print(f"Final statistics saved to: {FINAL_STATS_CSV}\n")
+    rows: list[dict[str, object]] = []
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    for profile in PROFILE_ORDER:
+        pg_insert_row = pg_insert.get(profile)
+        pm_insert_row = pm_insert.get(profile)
+        pg_read_row = pg_read.get(profile)
+        pm_read_row = pm_read.get(profile)
+        if not any((pg_insert_row, pm_insert_row, pg_read_row, pm_read_row)):
+            continue
+
+        payload_mb = safe_float(pg_insert_row or pm_insert_row, "payload_size_mb")
+        pg_insert_rps = safe_float(pg_insert_row, "mean_rows_per_sec")
+        pm_insert_rps = safe_float(pm_insert_row, "mean_rows_per_sec")
+        pg_read_ms = safe_float(pg_read_row, "mean_latency_ms")
+        pm_read_ms = safe_float(pm_read_row, "mean_latency_ms")
+        pg_amp = safe_float(pg_insert_row, "mean_storage_amplification")
+        pm_amp = safe_float(pm_insert_row, "mean_storage_amplification")
+        pg_disk_mb = safe_float(pg_insert_row, "mean_table_total_after_mb")
+        pm_disk_mb = safe_float(pm_insert_row, "mean_table_total_after_mb")
+        pg_driver_ms = safe_float(pg_driver.get(profile), "mean_latency_ms")
+        minio_driver_ms = safe_float(pm_driver.get(profile), "mean_latency_ms")
+        carbon_row = carbon_rows.get(profile, {})
+        pg_emissions_mg = float(carbon_row.get("pg_emissions_mg", 0.0)) if carbon_row else None
+        pm_emissions_mg = float(carbon_row.get("pm_emissions_mg", 0.0)) if carbon_row else None
+
+        rows.append(
+            {
+                "timestamp": timestamp,
+                "profile": profile,
+                "profile_label": profile_label(profile),
+                "payload_size_mb": round(payload_mb, 6) if payload_mb is not None else "",
+                "pg_insert_rows_per_sec": round(pg_insert_rps, 2) if pg_insert_rps is not None else "",
+                "pm_insert_rows_per_sec": round(pm_insert_rps, 2) if pm_insert_rps is not None else "",
+                "insert_speedup_pm_vs_pg": round(ratio(pm_insert_rps, pg_insert_rps), 3)
+                if ratio(pm_insert_rps, pg_insert_rps) is not None
+                else "",
+                "pg_point_read_ms": round(pg_read_ms, 3) if pg_read_ms is not None else "",
+                "pm_point_read_ms": round(pm_read_ms, 3) if pm_read_ms is not None else "",
+                "point_read_speedup_pg_vs_pm": round(ratio(pg_read_ms, pm_read_ms), 3)
+                if ratio(pg_read_ms, pm_read_ms) is not None
+                else "",
+                "pg_storage_amplification": round(pg_amp, 4) if pg_amp is not None else "",
+                "pm_storage_amplification": round(pm_amp, 4) if pm_amp is not None else "",
+                "pg_disk_mb": round(pg_disk_mb, 3) if pg_disk_mb is not None else "",
+                "pm_disk_mb": round(pm_disk_mb, 3) if pm_disk_mb is not None else "",
+                "pg_driver_ms": round(pg_driver_ms, 6) if pg_driver_ms is not None else "",
+                "minio_driver_ms": round(minio_driver_ms, 6) if minio_driver_ms is not None else "",
+                "pg_estimated_emissions_mg": round(pg_emissions_mg, 3) if pg_emissions_mg is not None else "",
+                "pm_estimated_emissions_mg": round(pm_emissions_mg, 3) if pm_emissions_mg is not None else "",
+                "pm_emissions_pct_vs_pg": round(((pm_emissions_mg - pg_emissions_mg) / pg_emissions_mg) * 100, 2)
+                if pg_emissions_mg not in (None, 0.0) and pm_emissions_mg is not None
+                else "",
+            }
+        )
+
+    return rows
+
+
+def print_rows(rows: list[dict[str, object]]) -> None:
+    if not rows:
+        print("No benchmark summaries found.")
+        return
+
+    print("FINAL STATISTICAL SUMMARY")
+    for row in rows:
+        print(
+            f"{row['profile_label']}: "
+            f"insert PG={row['pg_insert_rows_per_sec']} rows/s, "
+            f"PM={row['pm_insert_rows_per_sec']} rows/s, "
+            f"read PG={row['pg_point_read_ms']} ms, "
+            f"PM={row['pm_point_read_ms']} ms, "
+            f"disk PG={row['pg_disk_mb']} MB, "
+            f"PM={row['pm_disk_mb']} MB"
+        )
+
+
+def main() -> None:
+    rows = build_rows()
+    print_rows(rows)
+
+    output_path = code_dir() / FINAL_STATS_CSV
+    if output_path.exists():
+        output_path.unlink()
+
+    if not rows:
+        return
+
+    fieldnames = list(rows[0].keys())
+    for row in rows:
+        append_row(output_path, fieldnames, row)
+
+    print(f"Saved final summary to {output_path.name}")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 \IEEEoverridecommandlockouts
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
@@ -12,27 +11,7 @@
 \usepackage[draft,hidelinks,bookmarks=false,bookmarksdepth=0]{hyperref}
 \usepackage{xurl}
 
-
 \usepackage{listings}
-\lstdefinelanguage{bash} {
-	keywords={},
-	basicstyle=\ttfamily\small,
-	keywordstyle=\color{blue}\bfseries,
-	ndkeywords={},
-	ndkeywordstyle=\color{purple}\bfseries,
-	sensitive=true,
-	numberstyle=\tiny\color{gray},
-	breaklines=true,
-	frame=lines,
-	backgroundcolor=\color{lightgray!10},
-	tabsize=2,
-	comment=[l]{\#},
-	morecomment=[s]{/*}{*/},
-	commentstyle=\color{gray}\ttfamily,
-	stringstyle=\color{purple}\ttfamily,
-	showstringspaces=false,
-	morestring=[s]{"}{"}
-}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -48,7 +27,7 @@
 \maketitle
 
 \begin{abstract}
-Smart building and consumer electronics (CE) IoT systems increasingly deploy cameras that store high-resolution images inline in time-series databases. Selecting the right storage backend affects not only performance but also energy consumption and carbon emissions---a critical concern for green building initiatives. This paper presents a systematic performance and carbon footprint comparison of two storage architectures: (1)~PostgreSQL with TimescaleDB using inline BYTEA storage (PG), and (2)~PostgreSQL with TimescaleDB externalizing binary payloads to MinIO object storage (PM). Using isolated Dockerized deployments and CodeCarbon energy tracking, we benchmarked both architectures across five image resolutions (480p to 4K~UHD). We find that the complete PG benchmark phase consumes 0.00378~kWh and emits 2555~mg CO$_2$eq, while PM consumes 0.00217~kWh and emits 1469~mg CO$_2$eq---\textbf{42.5\% less}. PM achieves universal dominance in performance: it outperforms PG in insert throughput across all resolutions (reaching $2.2\times$ the throughput at 4K) and retrieves payloads significantly faster (up to $3.1\times$ at 4K). Furthermore, PM achieves near-optimal $1.00\times$ storage amplification versus $1.04\times$ for PG. These findings establish that externalizing binary payloads to object storage not only eliminates BYTEA performance penalties entirely but also provides substantial carbon efficiency for green IoT deployments.
+Smart building and facility-monitoring systems increasingly persist camera frames together with timestamped metadata, making storage-engine choice relevant not only for performance but also for operational carbon cost. This paper compares two architectures for image-based time-series workloads: PostgreSQL with TimescaleDB storing images inline as \texttt{BYTEA} (PG), and PostgreSQL with TimescaleDB externalising binaries to MinIO object storage while retaining metadata in the database (PM). Using isolated Docker deployments on an Ubuntu~24.04.3 host with an 11th Gen Intel Core i7-1165G7 processor, 15.3~GB RAM, and CodeCarbon machine-mode tracking, we benchmark seven quality-90 JPEG resolutions from 360p to 5K. The results show a resolution-dependent crossover. PG is faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. Latest-payload retrieval is nearly tied at the smallest profiles and PM is faster from 720p onward, reaching a $6.5\times$ latency advantage at 5K. Measured whole-phase totals show PM consuming 0.012286~kWh and emitting 8305~mg CO$_2$eq versus PG's 0.014912~kWh and 10080~mg CO$_2$eq, a 17.6\% reduction. Per-profile estimates show PM emits more at 360p--1080p but less from 1440p upward. These findings suggest inline \texttt{BYTEA} remains attractive for lower-resolution ingest-heavy workloads, whereas externalised object storage becomes preferable once payload size and retrieval sensitivity dominate.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -58,232 +37,202 @@ time-series databases, IoT building monitoring, PostgreSQL, MinIO, object storag
 \section{Introduction}
 \label{sec:introduction}
 
-Modern smart building and facility-monitoring systems deploy dense networks of IoT cameras and environmental sensors to support occupancy analysis, safety auditing, and predictive maintenance~\cite{ieee_ce_definition,intuz_iot_databases}. These devices continuously capture high-resolution images---from 1080p security feeds to 4K inspection cameras---which must be stored alongside timestamped metadata for temporal queries and audit replay~\cite{ceec_tsdb_review,jensen_tsms_survey}. As green building standards increasingly account for the operational carbon cost of IT infrastructure~\cite{nerc_tsdb_survey}, the choice of storage backend is no longer purely a performance decision: it directly affects the energy consumed by the data tier running 24/7 at the edge or in an on-premises data center.
+Smart building and facility-monitoring deployments increasingly combine conventional telemetry with image streams from embedded cameras, doorbells, inspection devices, and other edge systems~\cite{ieee_ce_definition,intuz_iot_databases}. These applications often need to retain binary media together with timestamps, device identifiers, and other metadata so that operators can inspect the latest frame, replay recent events, or query activity over time~\cite{ceec_tsdb_review,jensen_tsms_survey}. In such systems, the data tier runs continuously and its energy use contributes directly to the operational carbon footprint of the building or edge infrastructure~\cite{nerc_tsdb_survey}.
 
-Edge computing environments, where much of this IoT data is initially processed and stored, are typically constrained by limited power and thermal budgets. Running energy-inefficient database engines at the edge not only increases operational costs but also conflicts with global sustainability goals. Consequently, reducing the software carbon intensity (SCI) of these data pipelines is becoming as critical as optimizing their latency or throughput.
+Many organisations prefer to build on PostgreSQL~\cite{postgresql_official} and TimescaleDB~\cite{timescaledb_official} rather than introduce a specialised storage stack. When binary media is small, inline storage inside relational rows can be operationally convenient. When binary media becomes large, however, a common alternative is to keep only queryable metadata in PostgreSQL and store the bulk payload in an S3-compatible object store such as MinIO~\cite{minio_official} or Amazon S3~\cite{aws_s3_official}. These two options imply different write amplification, memory behaviour, and retrieval paths, and therefore potentially different energy profiles.
 
-While purpose-built time-series databases exist, many organizations prefer to maximize existing general-purpose databases---particularly PostgreSQL~\cite{postgresql_official}. A common production pattern separates binary payload storage from structured metadata by offloading large objects to S3-compatible object stores such as MinIO~\cite{minio_official} or Amazon S3~\cite{aws_s3_official}, while the database retains only lightweight references. Conversely, another approach stores the payloads directly in the database as inline BYTEA fields managed by PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism. 
+Existing benchmarks in the time-series literature focus primarily on lightweight numeric events~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval}. They rarely evaluate multi-megabyte image payloads, and even more rarely report energy or CO$_2$-equivalent emissions. This leaves a practical gap for image-heavy IoT deployments that must decide whether the simplicity of inline database storage outweighs the performance and sustainability benefits of separating metadata from binary objects.
 
-Existing benchmarks~\cite{tsbs,cratedb_ts_benchmark,diva_timescaledb_mongodb_eval} target lightweight numeric payloads and do not measure energy or emissions. No study systematically evaluates the resolution-dependent performance boundaries when databases must handle multi-megabyte CE image payloads, nor quantifies the carbon footprint benefit of externalizing payloads to object storage. 
+This paper addresses the following research question: \textit{What are the performance and carbon-footprint trade-offs of inline PostgreSQL \texttt{BYTEA} storage (PG) versus PostgreSQL+MinIO externalised object storage (PM) for image-based time-series workloads across increasing image resolutions?}
 
-\textbf{Research Question:} \textit{What is the carbon footprint and performance of inline database BYTEA storage (PG) versus externalized MinIO object storage (PM) across varying camera resolutions, and which architecture is more energy-efficient for IoT building monitoring?}
-
-To answer this, we benchmark both architectures across five image resolutions from 480p to 4K~UHD inside Docker containers, measure end-to-end CO$_2$ emissions with CodeCarbon~\cite{codecarbon}, and evaluate ingestion throughput, retrieval latency, and storage amplification.
-
-\section{Background}
-\label{sec:background}
-
-To contextualize the performance and energy dynamics of our benchmark, it is crucial to understand how relational databases and object stores handle large binary blobs.
-
-\subsection{Relational Inline Storage and TOAST}
-PostgreSQL employs a fixed page size (typically 8~KB). When a row exceeds this limit, PostgreSQL uses The Oversized-Attribute Storage Technique (TOAST)~\cite{postgresql_toast_docs}. TOAST automatically compresses and fragments large column values (such as BYTEA blobs) into multiple smaller chunks, storing them in a hidden, auxiliary TOAST table. The main table row retains only a lightweight pointer to these chunks.
-
-While TOAST is transparent to the application, it introduces hidden overheads. During ingestion, the database must evaluate the payload for compression, allocate chunks in the TOAST table, update TOAST indexes, and generate Write-Ahead Log (WAL) records for crash recovery. During retrieval, the database must query the main table, follow the pointer to the TOAST table, scan the index to fetch the fragmented chunks, reassemble (and potentially decompress) them in memory, and finally frame the large blob for transmission over the PostgreSQL wire protocol.
-
-\subsection{Object Storage and Externalization}
-Object storage systems, such as MinIO~\cite{minio_official}, abandon the block-and-page paradigm of relational databases. Data is stored as an immutable object in a flat namespace, often mapped directly to the underlying filesystem. 
-
-In a hybrid Object-Relational architecture, the application generates a unique key for the binary payload, uploads the payload to the object store via a simple HTTP PUT request, and then inserts the metadata and the object key into the relational database. Retrieval is a two-step process: the application queries the database for the key, then fetches the payload directly from the object store via an HTTP GET request. This bypasses the database's transactional machinery, index maintenance, and protocol framing for the bulky payload, offloading the heavy lifting to a storage engine optimized exclusively for streaming large files.
+To answer this question, we benchmark both architectures across seven JPEG profiles from 360p to 5K in isolated Docker containers, measure whole-phase energy and emissions with CodeCarbon~\cite{codecarbon}, and analyse insertion throughput, latest-payload point-read latency, storage amplification, and per-profile carbon estimates.
 
 \section{Related Work}
 \label{sec:related_work}
 
-Time-series databases optimize sequential data ingestion by employing append-only storage, time-based partitioning, and columnar compression to bypass the write amplification inherent in traditional B-Tree indexes~\cite{dewaal_timeseries_survey,jensen_tsms_survey}. TimescaleDB~\cite{timescaledb_official} extends PostgreSQL~\cite{postgresql_official} with transparent hypertable chunking that sustains flat ingestion throughput at scale~\cite{dewaal_timeseries_survey,nerc_tsdb_survey}. 
+Time-series databases are designed to sustain append-oriented ingestion by combining time-based partitioning, compression, and storage layouts that reduce the write amplification of traditional B-Tree update paths~\cite{dewaal_timeseries_survey,jensen_tsms_survey}. TimescaleDB~\cite{timescaledb_official} extends PostgreSQL~\cite{postgresql_official} with hypertables while preserving SQL semantics and the operational ecosystem many organisations already use.
 
-Existing comparative benchmarks between systems are limited to lightweight scalar payloads. The Time Series Benchmark Suite (TSBS)~\cite{tsbs} generates synthetic JSON/SQL events of a few bytes each to simulate DevOps server metrics and vehicle telemetry. CrateDB's benchmark~\cite{cratedb_ts_benchmark} focused on aggregate throughput over numeric IoT metrics. The evaluation by Mohamud and Broström~\cite{diva_timescaledb_mongodb_eval} compared TimescaleDB and MongoDB query execution times using lightweight numerical sensor data. These studies typically do not incorporate binary payloads exceeding a few kilobytes.
+Most comparative benchmarks in this space target lightweight scalar data rather than binary media. TSBS~\cite{tsbs} uses small DevOps and telemetry records, CrateDB's benchmark~\cite{cratedb_ts_benchmark} focuses on numeric IoT metrics, and the evaluation by Mohamud and Brostr\"om~\cite{diva_timescaledb_mongodb_eval} studies numerical sensor workloads. These benchmarks do not characterise the behaviour of multi-megabyte image payloads, where storage-engine internals become far more consequential.
 
-This gap is significant because storage engine behavior changes fundamentally with payload size, as described in Section~\ref{sec:background}. PostgreSQL's TOAST mechanism stores oversized attributes out-of-line, but still within the database's transactional boundary, requiring full deserialization on retrieval. Object stores like MinIO~\cite{minio_official} offer an alternative: storing binary data outside the database entirely, leaving only a lightweight reference key. 
+That gap matters because large binaries stress systems differently. PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism relocates oversized values out of the main row, but the payload still remains within the database's transactional and retrieval machinery. Object stores such as MinIO~\cite{minio_official}, by contrast, are designed to stream large immutable objects directly while leaving relational systems responsible only for lightweight metadata and indexing. The architectural trade-off is therefore not simply ``one system versus two systems,'' but ``one transactional path for everything'' versus ``separating metadata management from binary transport.''
 
-The carbon footprint of computing infrastructure has attracted growing attention. Lannelongue et al.~\cite{lannelongue_green_algorithms} introduced the Green Algorithms framework, quantifying CO$_2$-equivalent emissions from computation using energy consumption and regional grid intensity---the same principle adopted by CodeCarbon~\cite{codecarbon}. Within the database domain, energy efficiency studies have focused on query optimisation~\cite{nerc_tsdb_survey} and hardware selection, but no prior work applies per-operation carbon accounting to relational vs object storage architectures under varying payload sizes.
-
-Our work directly addresses this gap by conducting a systematic multi-resolution benchmark (480p--4K) for IoT building monitoring, measuring both performance and carbon footprint via CodeCarbon.
-
+The carbon footprint of software systems has also attracted increasing attention. Lannelongue et al.~\cite{lannelongue_green_algorithms} formalised the Green Algorithms approach, and CodeCarbon~\cite{codecarbon} provides a practical implementation that estimates energy use and associated emissions from machine-level measurements and regional grid intensity. Within database systems, however, relatively little work applies this style of accounting to binary time-series storage workloads. Our study addresses that gap for relational versus hybrid object-relational image storage.
 
 \section{Methodology}
 \label{sec:methodology}
 
-This study benchmarks two storage architectures under identical containerized conditions using Docker~\cite{docker_official}: (1)~PostgreSQL with TimescaleDB~\cite{timescaledb_official} storing payloads inline as BYTEA (PG), and (2)~PostgreSQL with TimescaleDB storing metadata with a MinIO~\cite{minio_official} object key while externalizing binaries (PM).
-
 \subsection{Hardware and Software Environment}
-All experiments execute on a single host machine running Linux 6.8.0 with an 11th Gen Intel Core i7-1165G7 processor (4 cores / 8 threads, 2.80~GHz base) and 16~GB RAM, equipped with a fast NVMe SSD. The processor supports Intel Running Average Power Limit (RAPL), allowing precise hardware-level energy profiling. 
+All experiments run on a Lenovo ThinkPad L13 laptop running Ubuntu~24.04.3~LTS with Linux kernel 6.8.0-90-generic. The machine provides an 11th Gen Intel Core i7-1165G7 processor (4 cores / 8 threads, 2.80~GHz base, 4.70~GHz max), 15.3~GB RAM, and a 476.9~GB Samsung MZVL4512HBLU-00BL7 NVMe SSD. CodeCarbon detects the host in Indonesia (Jakarta region) and operates in \texttt{tracking\_mode=machine}, using host-level CPU and RAM measurements for the benchmark phases.
 
-CodeCarbon tracks energy consumption across the CPU, RAM, and motherboard, using the regional carbon intensity factor to convert energy to equivalent emissions. Containers share host CPU and memory with no explicit CPU pinning to reflect realistic containerised edge deployments. The benchmark harness is written in Python~3.12 using \texttt{psycopg2}~2.9 and \texttt{minio}~7.2. Docker Compose manages the containers: PostgreSQL~15 with TimescaleDB 2.x and MinIO.
+\begin{table}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.1}
+\caption{Software Stack}
+\label{tab:software_versions}
+\begin{tabular}{ll}
+\hline
+\textbf{Component} & \textbf{Version} \\
+\hline
+Docker          & 29.4.0 \\
+Docker Compose  & v5.1.1 \\
+PostgreSQL      & 15 + TimescaleDB (\texttt{latest-pg15}) \\
+MinIO           & \texttt{minio/minio:latest} \\
+Python          & 3.12.3 \\
+psycopg2        & 2.9.11 \\
+minio           & 7.2.20 \\
+Pillow          & 12.1.0 \\
+CodeCarbon      & 3.2.5 \\
+\hline
+\end{tabular}
+\end{table}
 
-\subsection{Payload Configuration and Schema Design}
-The benchmark evaluates five progressively increasing quality-100 JPEG resolutions: 480p ($854{\times}480$, $\sim$0.33~MB), 720p ($1280{\times}720$, $\sim$0.60~MB), 1080p ($1920{\times}1080$, $\sim$1.09~MB), 1440p ($2560{\times}1440$, $\sim$1.66~MB), and 4K~UHD ($3840{\times}2160$, $\sim$3.07~MB). Maximum-quality JPEG ensures high visual entropy. High entropy prevents internal database compression algorithms (such as those applied by TOAST) from artificially reducing payload sizes, ensuring we are strictly evaluating storage and retrieval overheads for real-world dense image data.
+\subsection{Environment and Workloads}
+Both architectures are deployed in Docker containers on the same host. PostgreSQL exposes port~55432 and is launched with \texttt{max\_connections=100}. MinIO exposes ports~59000 and~59001 and uses the bucket \texttt{sensor-media}. The benchmark harness generates deterministic JPEG payloads from a single source image using a collage transform implemented in Python with Pillow. All profiles use JPEG quality~90.
 
-\textbf{Architecture~1: PG---PostgreSQL BYTEA.} The hypertable stores each frame with a \texttt{BYTEA} column for the binary payload, managed transparently by TOAST~\cite{postgresql_toast_docs}.
+Seven image profiles are evaluated: 360p ($640{\times}360$, $\sim$0.09~MB), 480p ($854{\times}480$, $\sim$0.16~MB), 720p ($1280{\times}720$, $\sim$0.36~MB), 1080p ($1920{\times}1080$, $\sim$0.80~MB), 1440p ($2560{\times}1440$, $\sim$1.40~MB), 4K~UHD ($3840{\times}2160$, $\sim$2.99~MB), and 5K ($5120{\times}2880$, $\sim$5.09~MB). For each profile, the benchmark performs a 100-row warm-up, followed by 5 measured insertion runs of 2,000 rows each in batches of 50. Latest-payload retrieval is measured as a point-read query with 2 warm-up runs and 5 measured runs. Driver overhead uses 10 warm-up and 10 measured roundtrips.
 
-\textbf{Architecture~2: PM---PostgreSQL+MinIO.} The hypertable stores only metadata and a \texttt{minio\_object\_key} text column; the binary payload is uploaded to MinIO via HTTP PUT. Both schemas carry a compound index on \texttt{(device\_id, ts~DESC)}.
+\subsection{Schema and Operations}
+PG stores each frame as a TimescaleDB hypertable row with a \texttt{BYTEA} payload column, allowing PostgreSQL's TOAST~\cite{postgresql_toast_docs} mechanism to manage oversized values transparently. PM stores the metadata in PostgreSQL but replaces the inline payload with a \texttt{minio\_object\_key}; the binary image itself is uploaded to MinIO. Both tables use a compound index on \texttt{(device\_id, ts DESC)} to support latest-payload access.
 
-\subsection{Experiment Design and Operations}
-For each of the five resolutions, the benchmark executes independently with 5 runs per metric. A 100-record warm-up phase pre-loads memory and network caches. The insertion benchmark commits 1000 records in batches of 50 per run. 
-
-For the PM architecture, each insert includes the MinIO \texttt{put\_object} HTTP PUT call within the timed region, capturing the full end-to-end write cost. Retrieval for PM first queries the metadata to obtain the object key, then streams the binary via MinIO HTTP GET. PG retrieval directly reads the BYTEA column using the psycopg2 driver. 
-
-Driver overhead is measured via direct client-server ping roundtrips (30 iterations): PostgreSQL (\texttt{SELECT 1}) and MinIO (\texttt{list\_buckets}). Storage amplification is measured as the on-disk storage size divided by the total raw payload size written.
+Each measured insert run recreates the target table, and PM also recreates the MinIO bucket. For retrieval, PG returns the inline payload through PostgreSQL, whereas PM first retrieves the latest object key from PostgreSQL and then issues an HTTP GET to MinIO. This design isolates the core storage behaviour of each architecture while preserving realistic end-to-end operations.
 
 \subsection{Carbon Footprint Measurement}
-Each architecture phase runs as a single CodeCarbon~\cite{codecarbon}-tracked process. CodeCarbon leverages RAPL to estimate CPU power draw and system memory footprint, converting total energy to CO$_2$-equivalent using the current regional grid intensity. All operations for a given architecture (insertions and retrievals across all five resolutions) are aggregated into one measurement, isolating per-architecture carbon cost under identical hardware conditions. 
+The benchmark runner wraps the PostgreSQL-only and PostgreSQL+MinIO phases separately with CodeCarbon. Each tracked phase therefore includes driver overhead, warm-up work, insert benchmarks, point-read benchmarks, and setup/teardown costs inside one measured duration. CodeCarbon reports total phase duration, energy consumed, CPU energy, RAM energy, and CO$_2$-equivalent emissions.
 
-Per-resolution emissions are estimated using a constant power-rate model: the measured total energy $E$ and duration $T$ yield an average power $P = E/T$; each profile's estimated energy is then $P \times t_i$, where $t_i$ is the sum of mean insertion and retrieval times for that profile across all runs. While this model simplifies intra-run power variations, it provides a highly accurate comparative breakdown between architectures sharing identical baseline consumption factors.
-
-
-\begin{table}[htbp]
-\centering
-\renewcommand{\arraystretch}{1.15}
-\caption{Insert Throughput (rows/s) --- PG vs.\ PM}
-\label{tab:insert_summary}
-\begin{tabular}{l r r}
-\hline
-\textbf{Res.} & \textbf{PG} & \textbf{PM} \\
- & (rows/s) & (rows/s) \\
-\hline
-480p  & 107.24 & \textbf{170.18} \\
-720p  & 60.86  & \textbf{137.88} \\
-1080p & 33.00  & \textbf{58.32} \\
-1440p & 22.76  & \textbf{34.32} \\
-4K    & 10.08  & \textbf{22.64} \\
-\hline
-\multicolumn{3}{l}{\footnotesize PG = PostgreSQL+TimescaleDB (inline BYTEA).} \\
-\multicolumn{3}{l}{\footnotesize PM = PostgreSQL+TimescaleDB+MinIO (externalized).} \\
-\end{tabular}
-\end{table}
-
-\begin{table}[htbp]
-\centering
-\renewcommand{\arraystretch}{1.15}
-\caption{Binary Retrieval Latency (ms) --- PG vs.\ PM}
-\label{tab:retrieval_summary}
-\begin{tabular}{l r r}
-\hline
-\textbf{Res.} & \textbf{PG} & \textbf{PM} \\
- & (ms) & (ms) \\
-\hline
-480p  & 2.94  & \textbf{1.78} \\
-720p  & 12.64 & \textbf{1.85} \\
-1080p & 8.46  & \textbf{5.21} \\
-1440p & 13.19 & \textbf{6.45} \\
-4K    & 25.70 & \textbf{8.24} \\
-\hline
-\multicolumn{3}{l}{\footnotesize PG = PostgreSQL+TimescaleDB (inline BYTEA).} \\
-\multicolumn{3}{l}{\footnotesize PM = PostgreSQL+TimescaleDB+MinIO (externalized).} \\
-\end{tabular}
-\end{table}
+To obtain per-profile carbon estimates, we apply a constant power-rate model to the measured phase totals. For a phase with total energy $E$, emissions $C$, and duration $T$, we derive average rates $E/T$ and $C/T$ and multiply them by each profile's measured insert and point-read durations. These per-profile values are estimates rather than direct measurements, while the phase-level totals remain directly measured by CodeCarbon.
 
 \begin{table*}[htbp]
 \centering
 \renewcommand{\arraystretch}{1.1}
-\caption{Per-Resolution Carbon Footprint Breakdown (estimated via constant power-rate model). PG = PostgreSQL BYTEA, PM = PostgreSQL+MinIO. Bold = higher emissions per profile.}
+\caption{Insert Throughput, Point-Read Latency, and Storage Amplification (2,000 rows)}
+\label{tab:performance_summary}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l rr rr rr}
+\hline
+\textbf{Res.} & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Point Read (ms)}} & \multicolumn{2}{c}{\textbf{Storage Amp.}} \\
+ & PG & PM & PG & PM & PG & PM \\
+\hline
+360p  & \textbf{424.23} & 189.52 & 1.777 & \textbf{1.338} & 1.0454 & \textbf{1.0029} \\
+480p  & \textbf{407.13} & 74.71 & \textbf{1.253} & 1.329 & 1.0435 & \textbf{1.0017} \\
+720p  & \textbf{164.05} & 61.37 & 2.615 & \textbf{1.524} & 1.0394 & \textbf{1.0007} \\
+1080p & \textbf{71.95} & 51.16 & 4.932 & \textbf{1.631} & 1.0388 & \textbf{1.0003} \\
+1440p & \textbf{39.60} & 36.91 & 7.358 & \textbf{2.195} & 1.0390 & \textbf{1.0002} \\
+4K    & 16.72 & \textbf{24.28} & 17.563 & \textbf{3.082} & 1.0378 & \textbf{1.0001} \\
+5K    & 8.55 & \textbf{10.85} & 27.208 & \textbf{4.167} & 1.0376 & \textbf{1.0001} \\
+\hline
+\multicolumn{7}{l}{\footnotesize PG = PostgreSQL+TimescaleDB with inline \texttt{BYTEA}. PM = PostgreSQL+TimescaleDB+MinIO.} \\
+\end{tabular}
+}
+\end{table*}
+
+\begin{table*}[htbp]
+\centering
+\renewcommand{\arraystretch}{1.05}
+\caption{Per-Profile Carbon Footprint Estimates from the Constant Power-Rate Model}
 \label{tab:carbon_summary}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{l rr rr rr rr rr}
 \hline
 \textbf{Res.}
   & \multicolumn{2}{c}{\textbf{Duration (s)}}
-  & \multicolumn{2}{c}{\textbf{Energy (µWh)}}
-  & \multicolumn{2}{c}{\textbf{CPU (µWh)}}
-  & \multicolumn{2}{c}{\textbf{RAM (µWh)}}
+  & \multicolumn{2}{c}{\textbf{Energy (\(\mu\)Wh)}}
+  & \multicolumn{2}{c}{\textbf{CPU (\(\mu\)Wh)}}
+  & \multicolumn{2}{c}{\textbf{RAM (\(\mu\)Wh)}}
   & \multicolumn{2}{c}{\textbf{Emissions (mg CO$_2$eq)}} \\
   & PG & PM & PG & PM & PG & PM & PG & PM & PG & PM \\
 \hline
-480p & \textbf{51.7} & 29.7 & \textbf{181.9} & 104.5 & \textbf{43.2} & 24.7 & \textbf{138.8} & 79.8 & \textbf{123.0} & 70.6 \\
-720p & \textbf{82.8} & 36.7 & \textbf{291.5} & 128.9 & \textbf{69.2} & 30.5 & \textbf{222.3} & 98.4 & \textbf{197.0} & 87.1 \\
-1080p & \textbf{151.9} & 86.4 & \textbf{534.8} & 303.7 & \textbf{126.9} & 71.9 & \textbf{407.9} & 231.8 & \textbf{361.5} & 205.3 \\
-1440p & \textbf{221.5} & 153.4 & \textbf{779.7} & 539.3 & \textbf{185.1} & 127.6 & \textbf{594.7} & 411.6 & \textbf{527.1} & 364.5 \\
-4K & \textbf{513.5} & 223.5 & \textbf{1807.4} & 785.5 & \textbf{429.0} & 185.9 & \textbf{1378.4} & 599.6 & \textbf{1221.7} & 530.9 \\
-\hline
-\textbf{Total} & \textbf{1021.4} & 529.7 & \textbf{3595.4} & 1861.8 & \textbf{853.4} & 440.6 & \textbf{2742.0} & 1421.2 & \textbf{2430.2} & 1258.5 \\
+360p  & 23.6 & 53.6 & 150.2 & 289.1 & 84.6 & 140.3 & 65.6 & 148.8 & 101.5 & 195.4 \\
+480p  & 24.6 & 137.8 & 156.3 & 743.6 & 88.0 & 361.0 & 68.3 & 382.7 & 105.7 & 502.6 \\
+720p  & 61.1 & 164.9 & 388.5 & 889.9 & 218.8 & 431.9 & 169.7 & 457.9 & 262.6 & 601.5 \\
+1080p & 139.3 & 196.3 & 886.2 & 1059.5 & 499.1 & 514.3 & 387.0 & 545.2 & 599.0 & 716.1 \\
+1440p & 252.7 & 272.8 & 1607.3 & 1472.5 & 905.3 & 714.8 & 702.0 & 757.7 & 1086.4 & 995.3 \\
+4K    & 600.2 & 414.4 & 3817.0 & 2236.7 & 2149.9 & 1085.7 & 1667.1 & 1151.0 & 2580.0 & 1511.8 \\
+5K    & 1171.4 & 924.5 & 7449.5 & 4990.3 & 4195.8 & 2422.3 & 3253.7 & 2568.0 & 5035.4 & 3373.1 \\
 \hline
 \end{tabular}
+}
+\vspace{2pt}
+\begin{minipage}{\textwidth}
+\footnotesize Measured whole-phase totals including driver overhead, warm-up, and setup: PG = 0.014912~kWh / 10079.6~mg CO$_2$eq; PM = 0.012286~kWh / 8304.8~mg CO$_2$eq.
+\end{minipage}
 \end{table*}
 
 \section{Results}
 \label{sec:results}
 
-The multi-resolution results reveal distinct performance regimes and substantial carbon footprint differences. Figures~\ref{fig:insert_throughput} and~\ref{fig:retrieval_latency} visualize the scaling trends, and Table~\ref{tab:carbon_summary} breaks down the carbon costs.
-
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/boxplot_insert_throughput.pdf}
-\caption{Insert throughput scaling from 480p to 4K. PM consistently outperforms PG across all evaluated resolutions.}
+\caption{Insert throughput across 360p--5K. PG leads through 1440p, while PM overtakes at 4K and remains ahead at 5K.}
 \label{fig:insert_throughput}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/boxplot_retrieval_latency.pdf}
-\caption{Binary retrieval latency scaling from 480p to 4K. PM retrieval remains consistently low; PG latency grows sharply with payload size.}
+\caption{Latest-payload binary retrieval latency across 360p--5K. PG is slightly faster only at 480p; PM is faster for the remaining profiles and the gap widens sharply at 4K and 5K.}
 \label{fig:retrieval_latency}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/carbon_footprint.pdf}
-\caption{Estimated CO$_2$ emissions (mg) per resolution. PG emissions are significantly higher and grow more severely as payload sizes scale.}
+\caption{Estimated per-profile CO$_2$eq emissions (mg) split into insert and retrieval contributions. PM emits more at small profiles but less from 1440p upward.}
 \label{fig:carbon_footprint}
 \end{figure}
 
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{figures/carbon_breakdown.pdf}
-\caption{Per-resolution carbon breakdown: benchmark duration, total energy, CPU energy, RAM energy, and CO$_2$ emissions. PG's footprint heavily exceeds PM across all metrics.}
+\includegraphics[width=.9\textwidth]{figures/carbon_breakdown.pdf}
+\caption{Per-profile energy breakdown (CPU + RAM, stacked bars) with benchmark duration shown as dashed lines. The crossover in PM's carbon advantage follows the crossover in end-to-end benchmark time.}
 \label{fig:carbon_breakdown}
 \end{figure*}
 
-\subsection{Driver Overhead}
-To ensure our performance differences originate from the storage engines rather than network framing, we isolated the baseline driver roundtrip overhead. Driver roundtrip latency for a minimal operational query (\texttt{SELECT 1} for PostgreSQL and \texttt{list\_buckets} for MinIO) registered at 0.26~ms for PostgreSQL via \texttt{psycopg2} and 0.71~ms for MinIO via HTTP/REST. 
+\subsection{Supporting Performance Observations}
+\label{subsec:performance}
+Table~\ref{tab:performance_summary} and Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency} show that insertion throughput exhibits a clear write-side crossover. PG is faster from 360p through 1440p, with especially large margins at 480p (407.13 vs.\ 74.71~rows/s, $5.45\times$) and 720p (164.05 vs.\ 61.37~rows/s, $2.67\times$). The gap narrows steadily as payload size increases and reverses at 4K, where PM reaches 24.28 vs.\ 16.72~rows/s ($1.45\times$ faster), and remains in PM's favour at 5K (10.85 vs.\ 8.55~rows/s, $1.27\times$ faster). On this host, inline \texttt{BYTEA} therefore remains a strong ingest option up to 1440p, but PM becomes more effective once payload sizes reach the largest profiles.
 
-Although the MinIO HTTP protocol possesses a measurably higher baseline latency per connection compared to PostgreSQL's binary wire protocol, this static overhead is heavily amortized by the time resolutions cross the megabyte threshold, rendering the payload transfer dynamics far more influential than the driver initialization.
+Latest-payload point-read latency follows a different pattern. PG is slightly faster only at 480p (1.253 vs.\ 1.329~ms), while PM is already faster at 360p (1.338 vs.\ 1.777~ms) and becomes decisively faster from 720p onward. At 1080p, PM reduces latency from 4.932 to 1.631~ms ($3.02\times$ faster); at 4K, from 17.563 to 3.082~ms ($5.70\times$ faster); and at 5K, from 27.208 to 4.167~ms ($6.53\times$ faster). The read-side crossover therefore occurs much earlier than the write-side crossover.
 
-\subsection{Ingestion Throughput}
-As shown in Figure~\ref{fig:insert_throughput} and Table~\ref{tab:insert_summary}, PM completely dominates insertion throughput across all evaluated resolutions. Even at the smallest evaluated payload of 480p ($\sim$0.33~MB), PM achieves 170.18 rows/s, robustly surpassing PG's 107.24 rows/s. As payload size increases, PG's throughput degrades more rapidly than PM's. At 4K ($\sim$3.07~MB), PM maintains more than double ($2.2\times$) the throughput of PG (22.64 vs.\ 10.08 rows/s).
+Storage efficiency is consistently in PM's favour. PG remains near $1.04\times$ storage amplification for all profiles, whereas PM stays essentially at raw-payload size, between $1.0029\times$ and $1.0001\times$. At 5K and 2,000 inserted rows, PG occupies 10555.0~MB versus 10172.9~MB for PM, a 382.1~MB gap despite similar logical content.
 
-This unmitigated advantage demonstrates that avoiding PostgreSQL's WAL-protected transactional write path and TOAST page management for binary blobs provides superior performance. While TOAST effectively prevents main-table bloat by externalizing chunks, writing these chunks still populates the transaction log and incurs heavy structural overhead. MinIO's optimized HTTP PUT handling outpaces database inline storage regardless of the payload resolution.
+Driver overhead provides useful context. Averaged across the seven profiles, PostgreSQL's driver roundtrip measures 0.075~ms, while MinIO's \texttt{list\_buckets} roundtrip measures 0.469~ms. The MinIO path therefore carries a higher fixed per-request overhead, but this cost is quickly amortised once large image transfers dominate the workload.
 
-\subsection{Binary Retrieval Latency}
-Binary retrieval latency (Figure~\ref{fig:retrieval_latency}, Table~\ref{tab:retrieval_summary}) shows a persistent and widening divergence favoring PM. PM retrieval latency remains exceptionally low across all resolutions: starting at 1.78~ms at 480p and rising gradually to just 8.24~ms at 4K. 
+\subsection{Carbon Footprint (RQ)}
+\label{subsec:carbon_footprint}
+The whole-phase CodeCarbon measurements show that PM is more carbon-efficient overall on this seven-profile benchmark. The PostgreSQL-only phase ran for 2344.8~s, consumed 0.014912~kWh, and emitted 10079.6~mg CO$_2$eq. The PostgreSQL+MinIO phase ran for 2276.1~s, consumed 0.012286~kWh, and emitted 8304.8~mg CO$_2$eq. This corresponds to a \textbf{17.6\% reduction} in both energy and emissions for PM at the phase level.
 
-In contrast, PG retrieval latency grows substantially with payload size, climbing from 2.94~ms at 480p to a costly 25.70~ms at 4K. This growth reflects the computational expense of deserializing multi-megabyte BYTEA objects stored in fragments across TOAST pages and then transmitting them through PostgreSQL's application wire protocol. At 4K, PM retrieval (8.24~ms) is roughly $3.1\times$ faster than PG (25.70~ms). The hybrid two-step retrieval required by PM (metadata SELECT then MinIO HTTP GET) proves universally more efficient than native database retrieval for media payloads.
+Table~\ref{tab:carbon_summary} and Figures~\ref{fig:carbon_footprint}--\ref{fig:carbon_breakdown} refine that picture by estimating the profile-level contribution of insert and retrieval work. These estimates show that PM is \emph{not} uniformly greener. At 360p, PM emits 195.4~mg CO$_2$eq versus 101.5~mg for PG (+92.5\%). At 480p, the PM penalty is much larger (502.6 vs.\ 105.7~mg, +375.7\%), reflecting its poor small-payload insert throughput. PM remains worse at 720p and 1080p, though the gap narrows substantially by 1080p (716.1 vs.\ 599.0~mg, +19.6\%).
 
-\subsection{Carbon Footprint Analysis}
-The differences in insertion throughput and query latency translate directly to operational carbon footprints. Across the entire benchmark execution, the PM phase consumed 0.00217~kWh of energy (1469~mg CO$_2$eq emissions) while the PG phase consumed 0.00378~kWh (2555~mg CO$_2$eq emissions). Externalising payloads to MinIO reduces total energy use and carbon emissions by an impressive \textbf{42.5\%}.
+The carbon crossover occurs at 1440p. There, PM emits 995.3~mg versus 1086.4~mg for PG, an 8.4\% advantage. At 4K the PM advantage becomes pronounced, dropping from 2580.0 to 1511.8~mg (-41.4\%), and at 5K the reduction remains substantial at 3373.1 versus 5035.4~mg (-33.0\%). This behaviour mirrors the throughput crossover observed in Section~\ref{subsec:performance}: once payload sizes become large enough for PostgreSQL's inline binary handling to dominate execution time, PM's separate object-storage path becomes both faster and lower-carbon.
 
-Table~\ref{tab:carbon_summary} and Figures~\ref{fig:carbon_footprint}--\ref{fig:carbon_breakdown} detail the per-resolution carbon footprint breakdown. Because PM executes workloads much faster at every resolution, its energy consumption and emissions are strictly lower. At 4K, PG emits 1221.7~mg CO$_2$eq compared to PM's 530.9~mg CO$_2$eq, taking more than twice the energy. This energy penalty for PG stems from significantly higher CPU utilization (429~$\mu$Wh for PG vs 186~$\mu$Wh for PM at 4K) and longer execution durations. 
-
-As the database engine manages large inline images, it burns compute cycles executing TOAST reassembly, managing expanded shared memory buffers, and formatting extensive binary responses over the wire. MinIO handles large objects cleanly with fewer CPU cycles, bypassing complex index traversals and drastically reducing its RAM footprint scaling.
-
-\subsection{Storage Efficiency}
-PM achieves near-optimal storage amplification of $1.00\times$ across all resolutions, with MinIO storing objects as raw blocks directly on disk with minimal metadata overhead. PG maintains a stable $1.04\times$ amplification due to TOAST table metadata, internal pointers, and disk page alignment. This translates to meaningful absolute differences at scale: at 4K, PG consumes 3,192~MB versus 3,075~MB for PM per 1000 records. While seemingly negligible as a percentage, a 4\% disk overhead compounds immensely in dense IoT camera deployments recording continuously.
+The difference between the measured whole-phase totals and the summed profile estimates is expected. The per-profile table only allocates insert and retrieval time, whereas the tracked phases also include warm-up activity, driver-overhead measurements, and setup work. The directly measured phase totals therefore remain the correct basis for the overall RQ answer, while the profile estimates explain where that overall difference originates.
 
 \section{Discussion}
 \label{sec:discussion}
 
-The results of this systematic benchmark highlight critical considerations for designing modern time-series data architectures, especially for consumer electronics and building IoT platforms.
+\textbf{Resolution-dependent crossover.} The updated benchmark does not support a universal ``always use MinIO'' or ``always use inline \texttt{BYTEA}'' conclusion. PG remains the better write engine through 1440p on this machine, even though PM already provides superior retrieval latency at most profiles. From 4K onward, PM becomes the better choice for both insertion throughput and point-read latency, and from 1440p onward it also becomes the lower-carbon option.
 
-\subsection{Architectural Trade-offs}
-A common misconception in data engineering is that storing binaries in the database simplifies the architecture and yields better performance for small-to-medium files by avoiding secondary network lookups. Our results decisively disprove this for modern containerized networks. The PM hybrid architecture universally outperformed the monolithic PG approach, even at 480p where payloads are well under a megabyte. MinIO's highly tuned object streaming engine easily overcomes the two-step metadata lookup latency, meaning the added architectural complexity of maintaining an external object store is handsomely rewarded by superior performance.
+\textbf{Why PostgreSQL leads at smaller writes.} At lower resolutions, PG benefits from batched inserts that avoid an extra object-store request per payload. The images are small enough that PostgreSQL's inline binary handling and TOAST overhead remain tolerable, while PM still pays the fixed cost of a MinIO PUT plus a relational metadata write. That is why PM performs particularly poorly at 480p despite its much better storage amplification.
 
-\subsection{Sustainability at the Edge}
-The 42.5\% reduction in overall carbon emissions achieved by adopting a PM architecture has profound implications for green computing. In smart building deployments, edge nodes run on tightly constrained power envelopes. CPU cycles wasted on PostgreSQL BYTEA fragmentation and TOAST table management directly translate to heat generation and electricity usage. Transitioning from inline relational blobs to object storage is not only a performance optimization but an immediate, low-effort mechanism to drastically shrink the software carbon intensity of a media-heavy IoT deployment.
+\textbf{Why PostgreSQL+MinIO wins at large payloads.} As payload size grows, the cost of keeping the binary within the relational engine rises sharply. PostgreSQL must still log, manage, and retrieve large values through the database path, whereas PM lets PostgreSQL manage only metadata while MinIO streams the object directly. This architectural separation turns into both a performance advantage and a carbon advantage once the binary payload is large enough, which in our measurements happens around 1440p for emissions and 4K for insertion throughput.
 
-\subsection{Threats to Validity}
-Several factors may affect the generalizability of these findings. First, all experiments ran on a single host utilizing a bridge network. In a distributed cloud environment where the database and the object store exist on physically separate networks, the PM retrieval path might suffer higher network latency, potentially shifting the crossover threshold for very small payloads. Second, our payloads use maximum-quality JPEG encoding; highly compressible media formats (like flat bitmaps) might benefit slightly more from TOAST's internal compression, though this is rare for actual camera feeds. Third, the benchmark uses a fixed batch size of 50 for ingestion; altering batch sizes or connection concurrency could vary the insertion throughput limits. 
+\textbf{Implications for system design.} These results suggest a workload-sensitive deployment rule. If the system is dominated by lower-resolution ingestion and operational simplicity is a priority, inline \texttt{BYTEA} storage remains defensible. If the system needs low-latency latest-frame access or expects 4K--5K payloads, externalising binaries to object storage becomes the more robust choice. PM also offers consistently better storage efficiency, which compounds as retention increases.
+
+\textbf{Threats to validity.} Results are from a single laptop-class host and a single container topology. Different hardware, distributed object-storage deployments, or more compressible media could shift the exact crossover points. The per-profile carbon table is estimated from whole-phase measurements using a constant power-rate assumption, so it should be interpreted as a benchmark-scoped explanation rather than a hardware-instrumented per-operation trace. Even so, both architectures were benchmarked under identical conditions, making the comparative trends meaningful.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-This study systematically benchmarked the performance and carbon footprint of relational (PG) and hybrid object-relational (PM) storage architectures for image-based time-series workloads. 
+This study evaluated the performance and carbon footprint of two storage architectures for image-based time-series workloads: PostgreSQL with inline \texttt{BYTEA} storage and PostgreSQL with externalised MinIO object storage.
 
-\begin{itemize}
-    \item \textbf{Universal Performance Dominance:} PM outperforms PG across all resolutions tested (480p to 4K) in both insertion throughput and retrieval latency. PM avoids the overhead of database transaction logs and TOAST management, demonstrating that external object storage is structurally superior for binary media.
-    \item \textbf{Retrieval Efficiency:} PM bypasses database protocol framing entirely for the payload retrieval step, achieving flat, highly responsive latency ($\sim$1.7--8.2~ms) by leaning on optimized HTTP streaming.
-    \item \textbf{Carbon Footprint:} PM drastically reduces the overall carbon footprint by \textbf{42.5\%} across the evaluated workloads. By requiring fewer CPU cycles and processing batches much faster, it offers massive sustainability advantages.
-\end{itemize}
+\textbf{RQ answer:} The better architecture depends on payload size and workload emphasis, but the complete seven-profile benchmark on this machine favours PostgreSQL+MinIO overall. Measured whole-phase totals show PM emitting 8304.8~mg CO$_2$eq versus PostgreSQL's 10079.6~mg, a \textbf{17.6\% reduction}. PG remains faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. For latest-payload retrieval, PM is faster at every profile except a slight PostgreSQL advantage at 480p, and the gap reaches $6.5\times$ at 5K.
 
-The key finding is that externalizing binary payloads to object storage (MinIO) eliminates relational storage performance penalties entirely for CE and IoT visual payloads. PM is undeniably the recommended architecture for modern time-series platforms handling any media payload, excelling dramatically in throughput, latency, and carbon efficiency.
+The key practical finding is therefore a pair of crossover points rather than a universal winner. On this host, inline PostgreSQL is attractive for smaller ingest-heavy workloads, while PostgreSQL+MinIO becomes the more compelling design as binary payload size increases and retrieval or carbon efficiency become dominant concerns. Future work should evaluate the same architectures on multi-node deployments and under higher client concurrency to determine how stable these crossover points remain outside a single-host setup.
 
 \section*{Acknowledgment}
 [Hidden for double-blind review]
+
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

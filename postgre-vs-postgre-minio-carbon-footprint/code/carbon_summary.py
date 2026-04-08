@@ -1,73 +1,118 @@
+from __future__ import annotations
+
 import csv
 from pathlib import Path
 
-def main():
-    emissions_file = Path("emissions.csv")
-    output_markdown = Path("carbon_results.md")
+from carbon_utils import POSTGRES_MINIO_PHASE, POSTGRES_PHASE, build_comparison_breakdown, code_dir, load_phase_totals
+from reporting_utils import safe_float
 
-    if not emissions_file.exists():
-        print(f"Error: {emissions_file} not found.")
+
+def _format_float(value: float | None, digits: int = 6) -> str:
+    if value is None:
+        return "N/A"
+    return f"{value:.{digits}f}"
+
+
+def _pct_change(current: float | None, baseline: float | None) -> str:
+    if current is None or baseline in (None, 0.0):
+        return "N/A"
+    return f"{((current - baseline) / baseline) * 100:+.2f}%"
+
+
+def _write_breakdown_csv(path: Path, rows: list[dict[str, float | str]]) -> None:
+    if not rows:
         return
 
-    data = {}
-    with emissions_file.open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            project_name = row.get("project_name")
-            if project_name:
-                data[project_name] = row
+    fieldnames = list(rows[0].keys())
+    with path.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
-    if not data:
-        print("No emission data found.")
+
+def main() -> None:
+    base_dir = code_dir()
+    phase_totals = load_phase_totals(base_dir)
+    pg_phase = phase_totals.get(POSTGRES_PHASE)
+    pm_phase = phase_totals.get(POSTGRES_MINIO_PHASE)
+
+    if not pg_phase or not pm_phase:
+        print("No emissions data found. Run run_all.sh first.")
         return
 
-    pg_minio_data = data.get("postgres_minio_phase", {})
-    pg_data = data.get("postgres_phase", {})
+    results_dir = base_dir / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    breakdown_rows = build_comparison_breakdown(base_dir)
+    breakdown_csv_path = results_dir / "carbon_profile_breakdown.csv"
+    _write_breakdown_csv(breakdown_csv_path, breakdown_rows)
 
-    def format_float(val_str):
-        if not val_str:
-            return "N/A"
-        try:
-            return f"{float(val_str):.6f}"
-        except:
-            return val_str
-
-    md_content = "# Carbon Footprint Measurement Results\n\n"
-    md_content += "This report compares the energy consumption and CO₂ emissions of PostgreSQL+MinIO and PostgreSQL benchmark phases.\n\n"
-    md_content += "| Metric | PostgreSQL+MinIO Phase | PostgreSQL Phase |\n"
-    md_content += "| --- | --- | --- |\n"
-    
     metrics = [
         ("Duration (s)", "duration"),
         ("Energy Consumed (kWh)", "energy_consumed"),
         ("CPU Energy (kWh)", "cpu_energy"),
         ("GPU Energy (kWh)", "gpu_energy"),
         ("RAM Energy (kWh)", "ram_energy"),
-        ("Emissions (kg CO₂ eq)", "emissions"),
-        ("Emissions Rate (kg CO₂ eq / s)", "emissions_rate")
+        ("Emissions (kg CO2 eq)", "emissions"),
+        ("Emissions Rate (kg CO2 eq / s)", "emissions_rate"),
+    ]
+
+    md_lines = [
+        "# Carbon Footprint Measurement Results",
+        "",
+        "This report compares the energy consumption and CO2 emissions of PostgreSQL+MinIO and PostgreSQL benchmark phases.",
+        "",
+        "| Metric | PostgreSQL+MinIO Phase | PostgreSQL Phase |",
+        "| --- | --- | --- |",
     ]
 
     for label, key in metrics:
-        m_val = format_float(pg_minio_data.get(key))
-        p_val = format_float(pg_data.get(key))
-        md_content += f"| {label} | {m_val} | {p_val} |\n"
+        pm_value = safe_float(pm_phase, key)
+        pg_value = safe_float(pg_phase, key)
+        md_lines.append(
+            f"| {label} | {_format_float(pm_value)} | {_format_float(pg_value)} |"
+        )
 
-    md_content += "\n## Summary Information\n"
-    if pg_minio_data and pg_data:
-        m_energy = float(pg_minio_data.get("energy_consumed", 0))
-        p_energy = float(pg_data.get("energy_consumed", 0))
-        if p_energy > 0 and m_energy > 0:
-            diff_energy = ((m_energy - p_energy) / p_energy) * 100
-            md_content += f"- **PostgreSQL+MinIO Energy compared to PostgreSQL**: {diff_energy:+.2f}%\n"
-            
-        m_emissions = float(pg_minio_data.get("emissions", 0))
-        p_emissions = float(pg_data.get("emissions", 0))
-        if p_emissions > 0 and m_emissions > 0:
-            diff_emis = ((m_emissions - p_emissions) / p_emissions) * 100
-            md_content += f"- **PostgreSQL+MinIO Emissions compared to PostgreSQL**: {diff_emis:+.2f}%\n"
+    pm_energy = safe_float(pm_phase, "energy_consumed")
+    pg_energy = safe_float(pg_phase, "energy_consumed")
+    pm_emissions = safe_float(pm_phase, "emissions")
+    pg_emissions = safe_float(pg_phase, "emissions")
 
-    output_markdown.write_text(md_content, encoding="utf-8")
-    print(f"Carbon summary successfully written to {output_markdown}")
+    md_lines.extend(
+        [
+            "",
+            "## Summary Information",
+            f"- **PostgreSQL+MinIO Energy compared to PostgreSQL**: {_pct_change(pm_energy, pg_energy)}",
+            f"- **PostgreSQL+MinIO Emissions compared to PostgreSQL**: {_pct_change(pm_emissions, pg_emissions)}",
+        ]
+    )
+
+    if breakdown_rows:
+        md_lines.extend(
+            [
+                "",
+                "## Estimated Per-Profile Breakdown",
+                "",
+                "| Profile | PG Duration (s) | PM Duration (s) | PG Emissions (mg) | PM Emissions (mg) |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in breakdown_rows:
+            md_lines.append(
+                "| "
+                f"{row['profile_label']} | "
+                f"{_format_float(float(row['pg_duration_sec']), 1)} | "
+                f"{_format_float(float(row['pm_duration_sec']), 1)} | "
+                f"{_format_float(float(row['pg_emissions_mg']), 1)} | "
+                f"{_format_float(float(row['pm_emissions_mg']), 1)} |"
+            )
+
+    markdown_path = results_dir / "carbon_results.md"
+    markdown_path.write_text("\n".join(md_lines) + "\n", encoding="utf-8")
+
+    print(f"Wrote carbon markdown summary to {markdown_path}")
+    if breakdown_rows:
+        print(f"Wrote per-profile carbon breakdown to {breakdown_csv_path}")
+
 
 if __name__ == "__main__":
     main()
