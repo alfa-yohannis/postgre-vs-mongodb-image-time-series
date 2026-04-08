@@ -58,8 +58,8 @@ export BENCHMARK_DRIVER_RUNS=30
 
 docker compose down -v
 docker compose up -d timescaledb minio
-echo "Waiting 15 seconds for PostgreSQL and MinIO to initialize..."
-sleep 15
+echo "Waiting 10 seconds for PostgreSQL and MinIO to initialize..."
+sleep 10
 
 for PROFILE in "${PROFILES[@]}"; do
     export MEDIA_PROFILE=$PROFILE
