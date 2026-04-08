@@ -335,3 +335,5 @@ __pycache__
 */paper/*.pdf
 paper/*.pdf
 postgre-vs-mongodb-carbon-footprint/code/script.pid
+.codex
+postgre-vs-postgre-minio-image-time-series/code/all_summaries.txt
