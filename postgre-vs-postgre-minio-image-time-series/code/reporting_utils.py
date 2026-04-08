@@ -5,19 +5,23 @@ from pathlib import Path
 
 
 PROFILE_ORDER = [
+    "360p_sd_image",
     "480p_sd_image",
     "720p_hd_image",
     "1080p_fhd_image",
     "1440p_qhd_image",
     "4k_uhd_image",
+    "5k_uhd_image",
 ]
 
 PROFILE_TO_LABEL = {
+    "360p_sd_image": "360p",
     "480p_sd_image": "480p",
     "720p_hd_image": "720p",
     "1080p_fhd_image": "1080p",
     "1440p_qhd_image": "1440p",
     "4k_uhd_image": "4K",
+    "5k_uhd_image": "5K",
 }
 
 

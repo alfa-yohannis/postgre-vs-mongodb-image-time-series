@@ -11,10 +11,24 @@ source ~/venv/bin/activate
 PYTHON_BIN="$HOME/venv/bin/python"
 RESULTS_DIR="results"
 
+normalize_profile () {
+    case "$1" in
+        360_sd_image) echo "360p_sd_image" ;;
+        480_sd_image) echo "480p_sd_image" ;;
+        720_hd_image) echo "720p_hd_image" ;;
+        1080_fhd_image) echo "1080p_fhd_image" ;;
+        1440_qhd_image) echo "1440p_qhd_image" ;;
+        *) echo "$1" ;;
+    esac
+}
+
 if [ "$#" -eq 0 ]; then
-    PROFILES=("480p_sd_image" "720p_hd_image" "1080p_fhd_image" "1440p_qhd_image" "4k_uhd_image")
+    PROFILES=("1080p_fhd_image" "1440p_qhd_image" "4k_uhd_image" "5k_uhd_image")
 else
-    PROFILES=("$@")
+    PROFILES=()
+    for PROFILE in "$@"; do
+        PROFILES+=("$(normalize_profile "$PROFILE")")
+    done
 fi
 
 echo "Cleaning PostgreSQL+MinIO result files..."
@@ -53,8 +67,8 @@ run_step () {
 
 export BENCHMARK_INSERT_RUNS=5
 export BENCHMARK_POINT_READ_RUNS=5
-export BENCHMARK_DRIVER_WARMUP_RUNS=20
-export BENCHMARK_DRIVER_RUNS=30
+export BENCHMARK_DRIVER_WARMUP_RUNS=10
+export BENCHMARK_DRIVER_RUNS=10
 
 docker compose down -v
 docker compose up -d timescaledb minio

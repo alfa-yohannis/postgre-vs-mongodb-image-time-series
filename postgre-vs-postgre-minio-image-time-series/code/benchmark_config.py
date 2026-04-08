@@ -93,15 +93,32 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=2160,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="4K still-image workload intended to push database payload limits.",
+    ),
+    "5k_uhd_image": WorkloadProfile(
+        name="5k_uhd_image",
+        payload_kind="image",
+        width=5120,
+        height=2880,
+        mime_type="image/jpeg",
+        codec="jpeg",
+        image_quality=90,
+        video_duration_sec=None,
+        video_fps=None,
+        video_crf=None,
+        warmup_rows=100,
+        total_rows=2000,
+        batch_size=50,
+        insert_runs=5,
+        description="5K still-image workload extending the benchmark beyond 4K.",
     ),
     "1440p_qhd_image": WorkloadProfile(
         name="1440p_qhd_image",
@@ -110,12 +127,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=1440,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="1440p QHD still-image workload.",
@@ -127,12 +144,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=1080,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="1080p Full-HD still-image workload.",
@@ -144,12 +161,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=720,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="720p HD still-image workload.",
@@ -161,12 +178,12 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=360,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="360p SD still-image workload.",
@@ -178,16 +195,24 @@ WORKLOAD_PROFILES: dict[str, WorkloadProfile] = {
         height=480,
         mime_type="image/jpeg",
         codec="jpeg",
-        image_quality=100,
+        image_quality=90,
         video_duration_sec=None,
         video_fps=None,
         video_crf=None,
         warmup_rows=100,
-        total_rows=1000,
+        total_rows=2000,
         batch_size=50,
         insert_runs=5,
         description="480p SD still-image workload.",
     ),
+}
+
+PROFILE_ALIASES: dict[str, str] = {
+    "360_sd_image": "360p_sd_image",
+    "480_sd_image": "480p_sd_image",
+    "720_hd_image": "720p_hd_image",
+    "1080_fhd_image": "1080p_fhd_image",
+    "1440_qhd_image": "1440p_qhd_image",
 }
 
 
@@ -250,11 +275,12 @@ def load_settings() -> BenchmarkSettings:
     repo_root = code_dir.parent
     paper_figures_dir = repo_root / "paper" / "figures"
 
-    profile_name = os.getenv("MEDIA_PROFILE", "large_fhd_image")
+    raw_profile_name = os.getenv("MEDIA_PROFILE", "large_fhd_image")
+    profile_name = PROFILE_ALIASES.get(raw_profile_name, raw_profile_name)
     if profile_name not in WORKLOAD_PROFILES:
         available = ", ".join(sorted(WORKLOAD_PROFILES))
         raise ValueError(
-            f"Unknown MEDIA_PROFILE '{profile_name}'. Available profiles: {available}"
+            f"Unknown MEDIA_PROFILE '{raw_profile_name}'. Available profiles: {available}"
         )
     workload = WORKLOAD_PROFILES[profile_name]
 

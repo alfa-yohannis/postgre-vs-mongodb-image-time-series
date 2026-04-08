@@ -48,10 +48,18 @@ run_step () {
 
 export BENCHMARK_INSERT_RUNS=5
 export BENCHMARK_POINT_READ_RUNS=5
-export BENCHMARK_DRIVER_WARMUP_RUNS=20
-export BENCHMARK_DRIVER_RUNS=30
+export BENCHMARK_DRIVER_WARMUP_RUNS=10
+export BENCHMARK_DRIVER_RUNS=10
 
-PROFILES=("480p_sd_image" "720p_hd_image" "1080p_fhd_image" "1440p_qhd_image" "4k_uhd_image")
+PROFILES=(
+    "360p_sd_image"
+    "480p_sd_image"
+    "720p_hd_image"
+    "1080p_fhd_image"
+    "1440p_qhd_image"
+    "4k_uhd_image"
+    "5k_uhd_image"
+)
 
 # --------------------------------------
 # PHASE 1: POSTGRESQL (BYTEA) ONLY
