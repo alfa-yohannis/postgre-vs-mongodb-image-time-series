@@ -27,7 +27,7 @@
 \maketitle
 
 \begin{abstract}
-Smart building and facility-monitoring systems increasingly persist camera frames together with timestamped metadata, making storage-engine choice relevant not only for performance but also for operational carbon cost. This paper compares two architectures for image-based time-series workloads: PostgreSQL with TimescaleDB storing images inline as \texttt{BYTEA} (PG), and PostgreSQL with TimescaleDB externalising binaries to MinIO object storage while retaining metadata in the database (PM). Using isolated Docker deployments with machine-level carbon tracking, we benchmark seven quality-90 JPEG resolutions from 360p to 5K. The results show resolution-dependent crossover behaviour across the measured metrics. For insertion, PG remains faster from the smallest profiles through 1440p, reaching up to about eight times the throughput of PM, while PM becomes faster at 4K and 5K. For latest-payload point reads, PG is only marginally faster at the two smallest profiles, whereas PM becomes faster from 720p onward and is about eight times faster at 5K. At the whole-phase level, PM reduces both energy use and CO$_2$-equivalent emissions by about 27\%. Profile-level estimates indicate that this carbon advantage appears only once image size becomes large enough, with PM emitting more at small profiles but less from 1440p upward. These findings suggest that inline \texttt{BYTEA} may remain suitable for lower-resolution ingest-heavy workloads on this benchmark, whereas externalised object storage may become more suitable as payload size, point-read sensitivity, and operational carbon become more important design considerations.
+Smart building and facility-monitoring systems increasingly persist camera frames together with timestamped metadata, making storage-engine choice relevant not only for performance but also for operational carbon cost. This paper compares two architectures for image-based time-series workloads: PostgreSQL with TimescaleDB storing images inline as \texttt{BYTEA} (PG), and PostgreSQL with TimescaleDB externalising binaries to MinIO object storage while retaining metadata in the database (PM). Using isolated Docker deployments and hardware-level energy tracking via CodeCarbon, we benchmark seven quality-90 JPEG resolutions from 360p to 5K. The results show resolution-dependent crossover behaviour across the measured metrics. For insertion, PG remains faster from the smallest profiles through 1440p, reaching up to about eight times the throughput of PM, while PM becomes faster at 4K and 5K. For latest-payload point reads, PG is only marginally faster at the two smallest profiles, whereas PM becomes faster from 720p onward and is about eight times faster at 5K. At the whole-phase level, PM reduces both energy use and CO$_2$-equivalent emissions by about 27\%. Profile-level estimates indicate that this carbon advantage appears only once image size becomes large enough, with PM emitting more at small profiles but less from 1440p upward. These findings suggest that inline \texttt{BYTEA} may remain suitable for lower-resolution ingest-heavy workloads on this benchmark, whereas externalised object storage may become more suitable as payload size, point-read sensitivity, and operational carbon become more important design considerations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -62,29 +62,7 @@ The carbon footprint of software systems has also attracted increasing attention
 \label{sec:methodology}
 
 \subsection{Hardware and Software Environment}
-All experiments run on a single host running Ubuntu~24.04.4~LTS with Linux kernel 6.8.0-107-generic. The machine provides an 11th Gen Intel Core i9-11900H processor (8 cores / 16 threads, 2.50~GHz base, 4.90~GHz max), 30.99~GB RAM, and a 1.9~TB Samsung MZVL22T0HBLB-00BH1 NVMe SSD. CodeCarbon detects the host in Indonesia (Banten region) and operates in \texttt{tracking\_mode=machine}, using host-level CPU and RAM measurements for the benchmark phases.
-
-\begin{table}[htbp]
-\centering
-\renewcommand{\arraystretch}{1.1}
-\caption{Software Stack}
-\label{tab:software_versions}
-\begin{tabular}{ll}
-\hline
-\textbf{Component} & \textbf{Version} \\
-\hline
-Docker          & 29.4.0 \\
-Docker Compose  & v5.1.1 \\
-PostgreSQL      & 15 + TimescaleDB (\texttt{latest-pg15}) \\
-MinIO           & \texttt{minio/minio:latest} \\
-Python          & 3.14.3 \\
-psycopg2        & 2.9.11 \\
-minio           & 7.2.20 \\
-Pillow          & 12.2.0 \\
-CodeCarbon      & 3.2.6 \\
-\hline
-\end{tabular}
-\end{table}
+All experiments execute on a single host machine running Ubuntu~24.04.4~LTS with Linux kernel 6.8.0-107-generic. The machine provides an 11th Gen Intel Core i9-11900H processor (8 cores / 16 threads, 2.50~GHz base, 4.90~GHz max), 30.99~GB RAM, and a 1.9~TB Samsung MZVL22T0HBLB-00BH1 NVMe SSD. The machine is located in Indonesia (Banten grid region); CodeCarbon uses the corresponding national carbon intensity factor. CPU and RAM power are measured via Intel RAPL (Running Average Power Limit) hardware counters (\texttt{tracking\_mode=machine}). Containers share host CPU and memory with no explicit CPU pinning or memory limits. The software stack consists of Docker~29.4.0 with Docker Compose~v5.1.1, PostgreSQL~15 with TimescaleDB (\texttt{latest-pg15}), MinIO (\texttt{minio/minio:latest}), Python~3.14.3, and the benchmark libraries \texttt{psycopg2}~2.9.11, \texttt{minio}~7.2.20, Pillow~12.2.0, and CodeCarbon~3.2.6.
 
 \subsection{Environment and Workloads}
 Both architectures are deployed in Docker containers on the same host. PostgreSQL exposes port~55432 and is launched with \texttt{max\_connections=100}. MinIO exposes ports~59000 and~59001 and uses the bucket \texttt{sensor-media}. The benchmark harness generates deterministic JPEG payloads from a single source image using a collage transform implemented in Python with Pillow. All profiles use JPEG quality~90.
@@ -97,7 +75,7 @@ PG stores each frame as a TimescaleDB hypertable row with a \texttt{BYTEA} paylo
 Each measured insert run recreates the target table, and PM also recreates the MinIO bucket. For retrieval, PG returns the inline payload through PostgreSQL, whereas PM first retrieves the latest object key from PostgreSQL and then issues an HTTP GET to MinIO. This design isolates the core storage behaviour of each architecture while preserving realistic end-to-end operations.
 
 \subsection{Carbon Footprint Measurement}
-The benchmark runner wraps the PostgreSQL-only and PostgreSQL+MinIO phases separately with CodeCarbon. Each tracked phase therefore includes driver overhead, warm-up work, insert benchmarks, point-read benchmarks, and setup/teardown costs inside one measured duration. CodeCarbon reports total phase duration, energy consumed, CPU energy, RAM energy, and CO$_2$-equivalent emissions.
+Each architecture phase runs as a single CodeCarbon~\cite{codecarbon}-tracked process. CodeCarbon reads CPU and RAM power via Intel RAPL hardware counters and converts total energy to CO$_2$-equivalent using the regional grid intensity for Indonesia ($\approx$0.676~kg CO$_2$eq/kWh). Each tracked phase therefore includes driver overhead, warm-up work, insert benchmarks, point-read benchmarks, and setup/teardown costs inside one measured duration. CodeCarbon reports total phase duration, energy consumed, CPU energy, RAM energy, and CO$_2$-equivalent emissions.
 
 To obtain per-profile carbon estimates, we apply a constant power-rate model to the measured phase totals. For a phase with total energy $E$, emissions $C$, and duration $T$, we derive average rates $E/T$ and $C/T$ and multiply them by each profile's measured insert and point-read durations. These per-profile values are estimates rather than direct measurements, while the phase-level totals remain directly measured by CodeCarbon.
 
@@ -139,13 +117,13 @@ To obtain per-profile carbon estimates, we apply a constant power-rate model to 
   & \multicolumn{2}{c}{\textbf{Emissions (mg CO$_2$eq)}} \\
   & PG & PM & PG & PM & PG & PM & PG & PM & PG & PM \\
 \hline
-360p  & 17.3 & 103.6 & 218.4 & 979.3 & 122.5 & 403.9 & 96.0 & 575.4 & 147.6 & 662.0 \\
-480p  & 27.4 & 183.9 & 346.7 & 1738.4 & 194.4 & 716.9 & 152.3 & 1021.5 & 234.3 & 1175.0 \\
-720p  & 62.3 & 202.3 & 788.3 & 1912.6 & 442.0 & 788.8 & 346.3 & 1123.8 & 532.8 & 1292.8 \\
-1080p & 141.6 & 273.8 & 1790.7 & 2588.8 & 1004.1 & 1067.7 & 786.6 & 1521.2 & 1210.4 & 1749.9 \\
-1440p & 254.3 & 301.2 & 3216.1 & 2847.6 & 1803.3 & 1174.4 & 1412.7 & 1673.2 & 2173.8 & 1924.8 \\
-4K    & 564.6 & 371.8 & 7140.1 & 3514.8 & 4003.7 & 1449.6 & 3136.5 & 2065.3 & 4826.2 & 2375.8 \\
-5K    & 993.0 & 671.1 & 12558.4 & 6344.6 & 7041.8 & 2616.6 & 5516.6 & 3728.0 & 8488.6 & 4288.5 \\
+360p  & \textbf{17.3} & 103.6 & \textbf{218.4} & 979.3 & \textbf{122.5} & 403.9 & \textbf{96.0} & 575.4 & \textbf{147.6} & 662.0 \\
+480p  & \textbf{27.4} & 183.9 & \textbf{346.7} & 1738.4 & \textbf{194.4} & 716.9 & \textbf{152.3} & 1021.5 & \textbf{234.3} & 1175.0 \\
+720p  & \textbf{62.3} & 202.3 & \textbf{788.3} & 1912.6 & \textbf{442.0} & 788.8 & \textbf{346.3} & 1123.8 & \textbf{532.8} & 1292.8 \\
+1080p & \textbf{141.6} & 273.8 & \textbf{1790.7} & 2588.8 & \textbf{1004.1} & 1067.7 & \textbf{786.6} & 1521.2 & \textbf{1210.4} & 1749.9 \\
+1440p & \textbf{254.3} & 301.2 & 3216.1 & \textbf{2847.6} & 1803.3 & \textbf{1174.4} & \textbf{1412.7} & 1673.2 & 2173.8 & \textbf{1924.8} \\
+4K    & 564.6 & \textbf{371.8} & 7140.1 & \textbf{3514.8} & 4003.7 & \textbf{1449.6} & 3136.5 & \textbf{2065.3} & 4826.2 & \textbf{2375.8} \\
+5K    & 993.0 & \textbf{671.1} & 12558.4 & \textbf{6344.6} & 7041.8 & \textbf{2616.6} & 5516.6 & \textbf{3728.0} & 8488.6 & \textbf{4288.5} \\
 \hline
 \end{tabular}
 \vspace{2pt}
@@ -216,12 +194,12 @@ The difference between the measured whole-phase totals and the summed profile es
 
 \textbf{Implications for system design.} These results suggest a workload-sensitive deployment heuristic. If the system is dominated by lower-resolution ingestion and operational simplicity is a priority, inline \texttt{BYTEA} storage may remain practical. If the system needs lower-latency latest-frame access from 720p upward, or expects sustained 4K--5K payloads, externalising binaries to object storage may become the more suitable choice. PM also offers consistently better storage efficiency, which compounds as retention increases.
 
-\textbf{Threats to validity.} Results are from a single host and a single container topology. Different hardware, distributed object-storage deployments, or more compressible media could shift the exact crossover points. The per-profile carbon table is estimated from whole-phase measurements using a constant power-rate assumption, so it should be interpreted as a benchmark-scoped explanation rather than a hardware-instrumented per-operation trace. Even so, both architectures were benchmarked under identical conditions, making the comparative trends informative within this benchmark.
+\textbf{Threats to validity.} Results are from a single host and a single container topology. Different hardware, distributed object-storage deployments, or more compressible media could shift the exact crossover points. CPU and RAM power are measured via Intel RAPL hardware counters (\texttt{tracking\_mode=machine}); the per-profile carbon table is a proportional estimate based on a constant power-rate assumption rather than a hardware-instrumented per-operation trace. Even so, both architectures were benchmarked under identical hardware conditions, making the comparative trends informative within this benchmark.
 
 \section{Conclusions}
 \label{sec:conclusions}
 
-This study evaluated the performance and carbon footprint of two storage architectures for image-based time-series workloads: PostgreSQL with inline \texttt{BYTEA} storage and PostgreSQL with externalised MinIO object storage.
+This study evaluated the performance and carbon footprint of two storage architectures for image-based time-series workloads: PostgreSQL with inline \texttt{BYTEA} storage and PostgreSQL with externalised MinIO object storage, using CodeCarbon with RAPL-based hardware energy measurement.
 
 \textbf{RQ answer:} The better architecture depends on payload size and workload emphasis, but the complete seven-profile benchmark on this machine shows lower measured whole-phase energy use and emissions for PostgreSQL+MinIO overall. Measured whole-phase totals show PM emitting 14483.0~mg CO$_2$eq versus PostgreSQL's 19824.8~mg, a \textbf{26.9\% reduction}. PG remains faster for insertion from 360p through 1440p, while PM becomes faster at 4K and 5K. For latest-payload point reads, PG is slightly faster at 360p and 480p, but PM is faster from 720p onward and the gap reaches $8.1\times$ at 5K.
 
