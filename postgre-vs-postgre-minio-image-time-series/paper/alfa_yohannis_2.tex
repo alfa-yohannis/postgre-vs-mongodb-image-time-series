@@ -42,14 +42,18 @@
 \title{Relational vs Hybrid Object-Relational Storage for Image-Based Time-Series Workloads}
 
 \author{
-[Hidden for double-blind review]
+\IEEEauthorblockN{Alfa Yohannis\textsuperscript{1}, Alexander Waworuntu\textsuperscript{2}, Master Edison Siregar\textsuperscript{1}, Arya Sanjaya\textsuperscript{1}, Refgiufi Avrianto\textsuperscript{1}}
+\IEEEauthorblockA{\textsuperscript{1}Universitas Pradita, Indonesia\\
+\{alfa.ryano, edison.siregar, arya.sanjaya, refgiufi.patria\}@pradita.ac.id}
+\IEEEauthorblockA{\textsuperscript{2}Universitas Multimedia Nusantara, Indonesia\\
+alex.wawo@umn.ac.id}
 }
 
 
 \maketitle
 
 \begin{abstract}
-This paper compares two storage architectures for image-based time-series workloads in IoT and consumer electronics (CE) systems: (1)~PostgreSQL with TimescaleDB using inline BYTEA storage (PG), and (2)~PostgreSQL with TimescaleDB externalizing binary payloads to MinIO object storage (PM). Using isolated Dockerized deployments, we evaluated both approaches across seven image resolutions from 360p to 5K. The results indicate a resolution-dependent crossover on this single-host setup. For ingestion, PG is faster from 360p through 1440p, outperforming PM by roughly $1.4\times$ to $8\times$. At 4K and 5K, PM becomes faster for writes, with its advantage reaching about $1.5\times$ at 5K. For latest-payload retrieval, PG is slightly faster at 360p and 480p, while PM becomes faster from 720p onward and reaches about a $7\times$ advantage at 5K. In storage efficiency, PM remains very close to 1.00$\times$ amplification while PG adds about 4\% overhead. These findings suggest that inline BYTEA may suit lower-resolution, ingest-heavy deployments on a single host, whereas externalized object storage may be more attractive when higher-resolution retrieval latency is the primary concern.
+This paper compares two storage architectures for image-based time-series workloads in IoT and consumer electronics systems: PostgreSQL with TimescaleDB using inline BYTEA storage (PG), and PostgreSQL with TimescaleDB externalizing binary payloads to MinIO object storage (PM). Using isolated Dockerized deployments, we evaluated both approaches across seven image resolutions from 360p to 5K. Results indicate a resolution-dependent crossover. For ingestion, PG is faster from 360p through 1440p ($1.4\times$--$8\times$); PM becomes faster at 4K and 5K ($\sim$$1.5\times$ at 5K). For latest-payload retrieval, PG is slightly faster at 360p--480p, while PM leads from 720p onward ($\sim$$7\times$ at 5K). PM maintains $\sim$$1.00\times$ storage amplification versus PG's $\sim$$1.04\times$. These findings suggest that inline BYTEA suits lower-resolution ingest-heavy deployments, whereas externalized object storage is more attractive when retrieval latency at higher resolutions is the primary concern.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -133,7 +137,9 @@ SELECT create_hypertable('sensor_media_minio',
 Both schemas use a compound secondary index on \texttt{(device\_id, ts DESC)}.
 
 \subsection{Experiment Design}
-For each of the seven resolutions, the benchmark executes independently in isolated PG-only and PG+MinIO phases. Docker is restarted between phases, while each timed run recreates the PostgreSQL table and, for PM, the MinIO bucket. Each profile uses 5 measured insert runs. A 100-record warm-up phase is executed before timing, and each timed insert run loads 2000 records in batches of 50.
+For each of the seven resolutions, the benchmark executes independently in isolated PG-only and PG+MinIO phases. Docker is restarted between phases, while each timed run recreates the PostgreSQL table and, for PM, the MinIO bucket. Each profile uses 5 measured insert runs. A 100-record warm-up phase is executed before timing, and each timed insert run loads 2000 records in batches of 50. The boxplot figures (Figures~\ref{fig:insert_throughput}--\ref{fig:retrieval_latency}) display the interquartile range and median across all runs; observed variance remained low across all resolutions and metrics, supporting the adequacy of 5 runs.
+
+A representative PG row at 1080p contains: \texttt{sample\_id} = 1, \texttt{device\_id} = 1, \texttt{ts} = 2025-04-20T00:00:00Z, \texttt{payload\_data} = $\sim$0.80~MB JPEG binary, \texttt{payload\_size\_bytes} = 838860, \texttt{width}=1920, \texttt{height} = 1080, \texttt{mime\_type} = image/jpeg. For PM, the \texttt{payload\_data} is replaced with \texttt{minio\_object\_key} = ``sensor-media/1080p/frame\_0001.jpg''.
 
 For the PM architecture, each insert includes the MinIO \texttt{put\_object} HTTP PUT call within the timed region, ensuring the measurement captures the full end-to-end hybrid write cost. Point-read latency uses 2 warm-up queries and 5 measured runs against the populated store. The retrieval benchmark issues \texttt{SELECT \ldots ORDER BY ts DESC LIMIT 1} on PostgreSQL; PM then performs a \texttt{get\_object} HTTP GET and reads the full object body.
 
@@ -266,6 +272,12 @@ The updated results reveal no universal winner. PG leads insertion throughput fr
 
 The retrieval results show the opposite pattern. PG holds a narrow lead at 360p and 480p, after which PM becomes progressively faster. By 1440p, 4K, and 5K, the MinIO-backed path delivers materially lower point-read latency, suggesting that externalized object storage offers its largest measured benefit on the read path and at the highest tested write sizes.
 
+\subsection{Database Selection Rationale}
+This study uses PostgreSQL as the sole relational baseline because TimescaleDB---the most widely adopted open-source time-series extension---is built exclusively on PostgreSQL, making it the natural choice for time-series workloads that leverage hypertable chunking. Other relational engines (MySQL, MariaDB) lack a comparable native time-series extension and would require different schema strategies, complicating the controlled comparison of inline versus externalized storage. We note, however, that the core architectural trade-off---TOAST-managed inline BYTEA versus HTTP-streamed object storage---is conceptually transferable to any relational database that supports large-object columns, though the precise crossover points would depend on each engine's page layout and write-ahead logging implementation.
+
+\subsection{Scalability Considerations}
+Our benchmark uses 2,000 rows per resolution. At larger scales (e.g., millions of rows from sustained multi-day capture), we expect PG's inline BYTEA disadvantage at high resolutions to compound: TOAST must manage progressively larger secondary tables, and WAL volume grows linearly with payload size. PM's object-store path, by contrast, writes only lightweight metadata rows to PostgreSQL, so its WAL and index overhead scales with metadata size rather than payload size. MinIO is designed for horizontal scale-out with erasure coding, which could further favour PM at large data volumes. Confirming these expectations under production-scale ingestion is left for future work.
+
 \subsection{Implications for System Design}
 Based on these findings, we highlight the following benchmark-scoped design implications:
 \begin{itemize}
@@ -283,7 +295,7 @@ Second, PM's two-step write (database INSERT plus MinIO PUT) is not atomic by de
 Despite these trade-offs, PM's measured read advantage and its 4K--5K write crossover make it a reasonable option for high-resolution or read-heavy workloads on a similar setup, whereas PG remains compelling for lower-resolution ingest-centric deployments.
 
 \subsection{Threats to Validity}
-Several factors may affect generalizability. First, all experiments run on a single host; distributed deployments may differ. Second, payloads use synthetic JPEG images derived from one source asset; real camera feeds may vary in entropy and compressibility. Third, MinIO runs on the same Docker bridge network as the database; production deployments with network latency would increase PM's per-request overhead, potentially narrowing its advantage at smaller payload sizes. Fourth, the fixed batch size of 50 may not reflect all ingestion patterns. Fifth, retrieval is measured as latest-payload point reads rather than range scans or sequential playback. Sixth, concurrent multi-client access was not tested; under contention, PostgreSQL's lock management for large BYTEA writes may degrade differently than MinIO's lock-free object writes.
+Several factors may affect generalizability. First, all experiments run on a single host; distributed deployments may differ. Second, payloads use synthetic JPEG images derived from one source asset; real camera feeds may vary in entropy and compressibility. Third, MinIO runs on the same Docker bridge network as the database; production deployments with network latency would increase PM's per-request overhead, potentially narrowing its advantage at smaller payload sizes. Fourth, the fixed batch size of 50 may not reflect all ingestion patterns; alternative batch sizes could shift the observed write-side crossover between 1440p and 4K. Fifth, retrieval is measured as latest-payload point reads rather than range scans or sequential playback. Sixth, concurrent multi-client access was not tested; under contention, PostgreSQL's lock management for large BYTEA writes may degrade differently than MinIO's lock-free object writes. Seventh, the benchmark evaluates only sequential single-client workloads; mixed read/write patterns and diverse query types (range scans, aggregations) remain untested.
 
 \subsection{Future Work}
 Several directions merit investigation. First, extending the benchmark to distributed multi-node deployments would test whether PM's advantages persist when MinIO objects are replicated across nodes with erasure coding. Second, evaluating PostgreSQL large-object (LO) storage as a third architecture---using \texttt{lo\_import}/\texttt{lo\_export} instead of BYTEA---would determine whether LO's streaming interface narrows the retrieval gap with MinIO. Third, concurrent multi-client benchmarks would reveal how each architecture scales under realistic multi-camera ingestion loads. Finally, incorporating GPU-accelerated image analytics pipelines downstream of retrieval would test whether PM's lower retrieval latency translates into measurable end-to-end processing gains for real-time inference workloads such as object detection or anomaly recognition on surveillance feeds.
@@ -303,7 +315,7 @@ The key finding is not that one architecture dominates universally, but that the
 
 
 \section*{Acknowledgment}
-[Hidden for double-blind review]
+The authors thank Universitas Pradita and Universitas Multimedia Nusantara for supporting this research through the international conference support fund scheme.
 
 
 \bibliographystyle{IEEEtran}
