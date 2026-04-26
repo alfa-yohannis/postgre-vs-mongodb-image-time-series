@@ -1,0 +1,154 @@
+===============================================================================
+CONSOLIDATED REVIEW FEEDBACK — ALL PAPERS
+Generalised from review_1.txt, review_2.txt, review_3.txt, review_4.txt
+===============================================================================
+
+The following actionable critiques are distilled from all four individual
+reviews into common themes applicable across the paper set.
+
+-------------------------------------------------------------------------------
+1. MISSING STORAGE HARDWARE SPECIFICATION
+-------------------------------------------------------------------------------
+   The methodology sections describe CPU, RAM, and OS but omit the type and
+   model of the storage device (NVMe SSD, SATA SSD, or HDD).  Because every
+   paper centres on storage amplification, cache eviction, and I/O bottlenecks,
+   readers need this information to judge whether results are I/O-bound or
+   compute-bound.
+   Action: add storage device make/model/interface to the Environment section.
+
+-------------------------------------------------------------------------------
+2. WORKLOAD REALISM
+-------------------------------------------------------------------------------
+   The benchmarks use sequential single-client insertion and retrieval.
+   Reviewers note the absence of:
+     • concurrent / multi-client access,
+     • mixed read/write workloads,
+     • diverse query patterns (range scans, aggregations, playback).
+   Action: acknowledge these limitations explicitly in Threats to Validity
+   and outline them as future work.
+
+-------------------------------------------------------------------------------
+3. BATCH SIZE SENSITIVITY
+-------------------------------------------------------------------------------
+   All papers use a fixed batch size of 50 records.  Reviewers ask how
+   changing the batch size would affect the observed crossover points
+   (e.g., the 1440p–4K throughput inversion).
+   Action: add a sentence in the methodology or threats section discussing
+   whether the batch size was chosen to favour neither engine and noting that
+   alternative batch sizes could shift the crossover.
+
+-------------------------------------------------------------------------------
+4. RUN VARIANCE / JUSTIFICATION FOR 5 RUNS
+-------------------------------------------------------------------------------
+   Each metric is measured over 5 runs, but no paper reports variance,
+   standard deviation, or confidence intervals.  Reviewers ask whether 5 runs
+   are sufficient and whether variance is low enough to support the claims.
+   Action: report standard deviations or interquartile ranges (boxplots
+   already show spread visually — reference them and/or add a brief numeric
+   summary in text or tables).
+
+-------------------------------------------------------------------------------
+5. FORMATTING AND UNIT CONSISTENCY
+-------------------------------------------------------------------------------
+   a) Multiplier notation: some places write "0.1 times" or "3 times" while
+      tables use "0.10×" and "3.00×".  Use a single consistent format
+      throughout (prefer the symbolic "0.10×" style).
+   b) Time units: body text mixes seconds ("2.5 s") with the millisecond
+      values shown in tables ("2542 ms").  Pick one unit per context and
+      convert consistently so readers can cross-reference prose and tables
+      without mental arithmetic.
+   Action: audit every multiplier and time reference for consistency.
+
+-------------------------------------------------------------------------------
+6. SCOPE JUSTIFICATION AND GENERALISABILITY
+-------------------------------------------------------------------------------
+   Reviewers note that some findings are "largely predictable" given known
+   limitations of inline binary storage.  They also ask why only PostgreSQL
+   was chosen as the relational baseline (rather than MySQL, MariaDB, etc.).
+   Action: add a brief justification for the database selection (e.g.,
+   PostgreSQL's dominance in time-series via TimescaleDB) and discuss whether
+   similar trends are expected with other relational engines.  Strengthen
+   novelty framing around the precise crossover quantification, not just the
+   directional finding.
+
+-------------------------------------------------------------------------------
+7. REPRESENTATIVE DATA EXAMPLE
+-------------------------------------------------------------------------------
+   Reviewers request a concrete example of a stored row/document so readers
+   can visualise the actual workload structure (metadata fields, payload
+   size, schema layout).
+   Action: add a small illustrative example — a single representative row
+   for each architecture — ideally in the methodology section or as a
+   listing.
+
+-------------------------------------------------------------------------------
+8. SCALABILITY DISCUSSION
+-------------------------------------------------------------------------------
+   Results are reported for 2,000 rows.  Reviewers ask whether the same
+   performance trends hold under substantially larger-scale ingestion
+   (e.g., millions of rows, sustained multi-day capture).
+   Action: add a paragraph in Discussion addressing expected behaviour at
+   larger scales, referencing known scaling properties of TOAST, WiredTiger
+   cache, and object-store semantics.
+
+-------------------------------------------------------------------------------
+9. ADDITIONAL REFERENCES
+-------------------------------------------------------------------------------
+   Reviewers suggest citing more conference and journal papers that address
+   database performance metrics for binary or large-payload workloads to
+   strengthen the related work grounding.
+   Action: survey and add 2–4 additional relevant references.
+
+-------------------------------------------------------------------------------
+10. RAW DATA SIZE BASELINE FOR STORAGE AMPLIFICATION
+-------------------------------------------------------------------------------
+   Storage amplification is reported as a ratio but the absolute raw
+   (logical) data size is not stated explicitly for every resolution.
+   Reviewers ask, e.g., "for 1920×1080 at ~1.09 MB, what is the total raw
+   size for 2,000 rows?"
+   Action: add a Total Raw Data Size column or footnote so readers can
+   independently verify the amplification ratio.
+
+-------------------------------------------------------------------------------
+11. CROSS-PAPER SIMILARITY (IEEE COMPLIANCE)
+-------------------------------------------------------------------------------
+   The Introduction and Related Work sections across the four papers share
+   substantial verbatim overlap.  One reviewer explicitly flags a single-
+   source similarity above the 10 % IEEE threshold.
+   Action: rewrite Introduction and Related Work for each paper so that
+   shared background is paraphrased differently and each paper foregrounds
+   its own unique contribution from the opening paragraphs.
+
+-------------------------------------------------------------------------------
+12. CONFIGURATION FAIRNESS
+-------------------------------------------------------------------------------
+   For the PG-vs-MongoDB papers: MongoDB's WiredTiger cache is set to a
+   specific value (e.g., 2 GB or 30 GB).  Reviewers ask whether this is
+   fair relative to PostgreSQL's OS-level caching and whether tuning could
+   delay the observed failures.
+   Action: justify the chosen cache configuration, clarify PostgreSQL's
+   equivalent memory path, and note in Threats to Validity that larger cache
+   could delay — but not eliminate — the architectural limitations.
+
+-------------------------------------------------------------------------------
+13. INCLUDE ALL TESTED RESOLUTIONS
+-------------------------------------------------------------------------------
+   Some papers mention that lower resolutions (360p, 480p, 720p) were tested
+   but excluded "for brevity".  Reviewers argue that including them — even
+   in a compact supplementary table — would reinforce the trend narrative.
+   Action: add a summary table or appendix row for all tested resolutions.
+
+-------------------------------------------------------------------------------
+14. FUTURE WORK DIRECTIONS
+-------------------------------------------------------------------------------
+   Reviewers suggest several extensions that should be mentioned:
+     • distributed / sharded / multi-node deployments,
+     • PostgreSQL Large Objects (LO) as an alternative to BYTEA,
+     • hybrid metadata-in-DB + payload-in-object-store strategies,
+     • GPU-accelerated downstream analytics.
+   Action: ensure the future-work paragraph covers at least distributed
+   deployments and PostgreSQL LO where relevant.
+
+===============================================================================
+END OF CONSOLIDATED REVIEW
+===============================================================================
