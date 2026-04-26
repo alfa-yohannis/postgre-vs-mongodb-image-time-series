@@ -1,0 +1,22 @@
+Comparison: PostgreSQL + TimescaleDB vs MongoDB
+
+Clear problem, niche focus.
+Not just a typical database, but an “image payload + time-series”.
+
+Experimental design is excellent.
+Uses a Docker isolate environment.
+Controls variables (resolution scaling).
+
+Workload not realistic enough.
+Uses image insertion and retrieval.
+But lacks:
+concurrent users
+mixed workload (read/write)
+query pattern
+
+MongoDB fails at 6K → interpretation needs attention.
+It says it fails due to cache pressure.
+Has configuration tuning been done?
+Is the memory limit fair?
+
+With larger and larger image data sizes in IoTs, this research could prove useful in selecting database tools. However, there is a question on experiment the authors should clarify: the benchmark suite was repeatedly run 5 times per resolution per metric, how are the variances between runs? Are the variances low enough to justiyfy 5 runs?
