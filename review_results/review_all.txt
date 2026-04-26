@@ -3,12 +3,22 @@ CONSOLIDATED REVIEW FEEDBACK — ALL PAPERS
 Generalised from review_1.txt, review_2.txt, review_3.txt, review_4.txt
 ===============================================================================
 
+Paper key:
+  Paper 1 = alfa_yohannis_1.tex  (postgre-vs-mongodb-image-time-series)
+  Paper 2 = alfa_yohannis_2.tex  (postgre-vs-postgre-minio-image-time-series)
+  Paper 3 = alfa_yohannis_3.tex  (postgre-vs-mongodb-carbon-footprint)
+  Paper 4 = alfa_yohannis_4.tex  (postgre-vs-postgre-minio-carbon-footprint)
+
 The following actionable critiques are distilled from all four individual
 reviews into common themes applicable across the paper set.
 
 -------------------------------------------------------------------------------
 1. MISSING STORAGE HARDWARE SPECIFICATION
 -------------------------------------------------------------------------------
+   Applies to: Paper 1, Paper 3  (Papers 2 and 4 already list the Samsung
+               NVMe SSD model.)
+   Source: review_3.txt
+
    The methodology sections describe CPU, RAM, and OS but omit the type and
    model of the storage device (NVMe SSD, SATA SSD, or HDD).  Because every
    paper centres on storage amplification, cache eviction, and I/O bottlenecks,
@@ -19,6 +29,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 2. WORKLOAD REALISM
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_1.txt
+
    The benchmarks use sequential single-client insertion and retrieval.
    Reviewers note the absence of:
      • concurrent / multi-client access,
@@ -30,6 +43,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 3. BATCH SIZE SENSITIVITY
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_3.txt
+
    All papers use a fixed batch size of 50 records.  Reviewers ask how
    changing the batch size would affect the observed crossover points
    (e.g., the 1440p–4K throughput inversion).
@@ -40,6 +56,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 4. RUN VARIANCE / JUSTIFICATION FOR 5 RUNS
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_1.txt
+
    Each metric is measured over 5 runs, but no paper reports variance,
    standard deviation, or confidence intervals.  Reviewers ask whether 5 runs
    are sufficient and whether variance is low enough to support the claims.
@@ -50,6 +69,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 5. FORMATTING AND UNIT CONSISTENCY
 -------------------------------------------------------------------------------
+   Applies to: Paper 1, Paper 3  (Papers 2 and 4 already use consistent
+               notation.)
+   Source: review_3.txt
+
    a) Multiplier notation: some places write "0.1 times" or "3 times" while
       tables use "0.10×" and "3.00×".  Use a single consistent format
       throughout (prefer the symbolic "0.10×" style).
@@ -62,6 +85,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 6. SCOPE JUSTIFICATION AND GENERALISABILITY
 -------------------------------------------------------------------------------
+   Applies to: Paper 2, Paper 4  (PG-vs-PM papers where reviewers question
+               why only PostgreSQL is the relational baseline.)
+   Source: review_2.txt
+
    Reviewers note that some findings are "largely predictable" given known
    limitations of inline binary storage.  They also ask why only PostgreSQL
    was chosen as the relational baseline (rather than MySQL, MariaDB, etc.).
@@ -74,6 +101,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 7. REPRESENTATIVE DATA EXAMPLE
 -------------------------------------------------------------------------------
+   Applies to: Paper 2, Paper 4  (Papers 1 and 3 already include schema
+               listings with sample rows/documents.)
+   Source: review_2.txt
+
    Reviewers request a concrete example of a stored row/document so readers
    can visualise the actual workload structure (metadata fields, payload
    size, schema layout).
@@ -84,6 +115,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 8. SCALABILITY DISCUSSION
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_2.txt
+
    Results are reported for 2,000 rows.  Reviewers ask whether the same
    performance trends hold under substantially larger-scale ingestion
    (e.g., millions of rows, sustained multi-day capture).
@@ -94,6 +128,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 9. ADDITIONAL REFERENCES
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_3.txt
+
    Reviewers suggest citing more conference and journal papers that address
    database performance metrics for binary or large-payload workloads to
    strengthen the related work grounding.
@@ -102,6 +139,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 10. RAW DATA SIZE BASELINE FOR STORAGE AMPLIFICATION
 -------------------------------------------------------------------------------
+   Applies to: Paper 1, Paper 3  (Papers 2 and 4 already provide enough
+               context in their storage tables.)
+   Source: review_3.txt
+
    Storage amplification is reported as a ratio but the absolute raw
    (logical) data size is not stated explicitly for every resolution.
    Reviewers ask, e.g., "for 1920×1080 at ~1.09 MB, what is the total raw
@@ -112,6 +153,11 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 11. CROSS-PAPER SIMILARITY (IEEE COMPLIANCE)
 -------------------------------------------------------------------------------
+   Applies to: All papers, but especially Paper 4 (flagged for similarity
+               with Paper 1's Introduction and Related Work).  Papers 1 & 3
+               and Papers 2 & 4 share substantial verbatim overlap.
+   Source: review_4.txt
+
    The Introduction and Related Work sections across the four papers share
    substantial verbatim overlap.  One reviewer explicitly flags a single-
    source similarity above the 10 % IEEE threshold.
@@ -122,6 +168,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 12. CONFIGURATION FAIRNESS
 -------------------------------------------------------------------------------
+   Applies to: Paper 1, Paper 3  (the two PG-vs-MongoDB papers where
+               WiredTiger cache sizing is a factor.)
+   Source: review_1.txt
+
    For the PG-vs-MongoDB papers: MongoDB's WiredTiger cache is set to a
    specific value (e.g., 2 GB or 30 GB).  Reviewers ask whether this is
    fair relative to PostgreSQL's OS-level caching and whether tuning could
@@ -133,6 +183,10 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 13. INCLUDE ALL TESTED RESOLUTIONS
 -------------------------------------------------------------------------------
+   Applies to: Paper 1  (mentions testing 360p, 480p, 720p but excludes
+               them "for brevity".)
+   Source: review_3.txt
+
    Some papers mention that lower resolutions (360p, 480p, 720p) were tested
    but excluded "for brevity".  Reviewers argue that including them — even
    in a compact supplementary table — would reinforce the trend narrative.
@@ -141,6 +195,9 @@ reviews into common themes applicable across the paper set.
 -------------------------------------------------------------------------------
 14. FUTURE WORK DIRECTIONS
 -------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: review_4.txt, review_2.txt
+
    Reviewers suggest several extensions that should be mentioned:
      • distributed / sharded / multi-node deployments,
      • PostgreSQL Large Objects (LO) as an alternative to BYTEA,
@@ -148,6 +205,16 @@ reviews into common themes applicable across the paper set.
      • GPU-accelerated downstream analytics.
    Action: ensure the future-work paragraph covers at least distributed
    deployments and PostgreSQL LO where relevant.
+
+-------------------------------------------------------------------------------
+15. PAGES AND ABSTRACT LIMIT
+-------------------------------------------------------------------------------
+   Applies to: All papers (Paper 1, Paper 2, Paper 3, Paper 4)
+   Source: conference formatting guidelines
+
+   Full papers must not exceed 6 pages. Each manuscript must include an
+   abstract of approximately 150 words and provide a complete description
+   of the research, including objectives, methods, results, and conclusions.
 
 ===============================================================================
 END OF CONSOLIDATED REVIEW
