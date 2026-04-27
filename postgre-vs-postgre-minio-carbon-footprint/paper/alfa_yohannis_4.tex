@@ -216,7 +216,7 @@ This study evaluated the performance and carbon footprint of two storage archite
 The key practical finding is therefore a set of crossover points rather than a universal winner. On this host, inline PostgreSQL may suit smaller ingest-heavy workloads, while PostgreSQL+MinIO may become more suitable as binary payload size increases and point-read or carbon efficiency become more important. Future work should evaluate the same architectures on multi-node deployments and under higher client concurrency to determine how stable these crossover points remain outside a single-host setup. Additionally, PostgreSQL Large Objects (LO) merit investigation as a third architecture---using \texttt{lo\_import}/\texttt{lo\_export} instead of inline BYTEA---to determine whether LO's streaming interface narrows the carbon and retrieval gap with MinIO.
 
 \section*{Acknowledgment}
-The authors thank Universitas Pradita and Universitas Multimedia Nusantara for supporting this research through the international conference support fund scheme.
+The authors thank Universitas Pradita and Universitas Multimedia Nusantara for supporting this research.
 
 
 \bibliographystyle{IEEEtran}
