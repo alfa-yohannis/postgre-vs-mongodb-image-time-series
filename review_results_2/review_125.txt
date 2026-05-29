@@ -1,0 +1,16 @@
+Reviews
+Review 1
+Overall evaluation
+10: Accept
+This paper presents a timely and well-executed benchmark study comparing the performance and carbon footprint of inline BYTEA storage versus externalized object storage (MinIO) in PostgreSQL/TimescaleDB for image-based IoT time-series workloads. The topic is highly relevant to green computing and sustainable edge IoT deployments in smart buildings, with clear practical implications. The methodology is rigorous, the results are convincingly demonstrated with multi-resolution experiments, and the findings strongly support the superiority of the hybrid architecture in both efficiency and emissions reduction.
+Additional Scores
+Important of the topic
+5: excellent
+Quality of Content
+5: excellent
+Clarity and Organization
+5: excellent
+Format, References and Citations
+4: good
+Reviewer's comments	Nothing
+

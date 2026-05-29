@@ -1,0 +1,20 @@
+ 
+Reviews
+Review 1
+Overall evaluation
+10: Accept
+The topic is relevant and the paper is generally well-structured and readable.
+
+The authors are encouraged to clearly state the main contributions of the work at the end of the literature review section to better highlight the novelty of the study.
+Additional Scores
+Important of the topic
+4: good
+Quality of Content
+4: good
+Clarity and Organization
+4: good
+Format, References and Citations
+4: good
+Reviewer's comments	The topic is relevant and the paper is generally well-structured and readable.
+
+The authors are encouraged to clearly state the main contributions of the work at the end of the literature review section to better highlight the novelty of the study.
