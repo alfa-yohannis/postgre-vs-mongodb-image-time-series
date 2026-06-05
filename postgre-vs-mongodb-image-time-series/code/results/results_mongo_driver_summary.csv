@@ -1,0 +1,13 @@
+timestamp,engine,query_id,mean_latency_ms,std_latency_ms,n_runs
+2026-04-06T13:32:48.305959+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.12469,0.097203,10
+2026-04-06T13:33:18.114743+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.111887,0.046586,10
+2026-04-06T13:34:21.371460+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.189024,0.120724,10
+2026-04-06T13:40:01.658497+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.119698,0.028853,10
+2026-04-06T13:53:07.873638+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.142519,0.05604,10
+2026-04-06T14:40:30.491061+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.211577,0.122747,10
+2026-04-06T14:44:28.538459+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.090989,0.004085,10
+2026-04-06T14:52:39.870691+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.09724,0.035449,10
+2026-04-06T14:53:33.553226+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.090728,0.007476,10
+2026-04-06T14:55:31.553833+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.145827,0.055542,10
+2026-04-06T15:06:17.818749+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.10483,0.009938,10
+2026-04-06T15:32:26.627273+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.104673,0.01611,10

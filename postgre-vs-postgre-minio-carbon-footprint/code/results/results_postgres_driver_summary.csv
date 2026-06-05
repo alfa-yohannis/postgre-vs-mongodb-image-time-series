@@ -1,0 +1,8 @@
+timestamp,engine,profile,query_id,mean_latency_ms,std_latency_ms,n_runs
+2026-04-08T14:09:01.974526+00:00,postgres+psycopg2-driver,360p_sd_image,Q_driver_roundtrip_select_1,0.055841,0.006716,10
+2026-04-08T14:09:24.522556+00:00,postgres+psycopg2-driver,480p_sd_image,Q_driver_roundtrip_select_1,0.067355,0.010546,10
+2026-04-08T14:09:58.393201+00:00,postgres+psycopg2-driver,720p_hd_image,Q_driver_roundtrip_select_1,0.104343,0.054989,10
+2026-04-08T14:11:10.747135+00:00,postgres+psycopg2-driver,1080p_fhd_image,Q_driver_roundtrip_select_1,0.047119,0.001926,10
+2026-04-08T14:13:51.648648+00:00,postgres+psycopg2-driver,1440p_qhd_image,Q_driver_roundtrip_select_1,0.049368,0.006,10
+2026-04-08T14:18:36.105871+00:00,postgres+psycopg2-driver,4k_uhd_image,Q_driver_roundtrip_select_1,0.060423,0.005986,10
+2026-04-08T14:29:03.477800+00:00,postgres+psycopg2-driver,5k_uhd_image,Q_driver_roundtrip_select_1,0.052281,0.003057,10

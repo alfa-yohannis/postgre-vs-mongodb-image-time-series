@@ -1,0 +1,5 @@
+timestamp,engine,query_id,mean_latency_ms,std_latency_ms,n_runs
+2026-04-07T14:44:35.079587+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.089321,0.004955,10
+2026-04-07T14:45:26.779968+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.097171,0.012804,10
+2026-04-07T14:47:19.900012+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.192813,0.147573,10
+2026-04-07T14:57:57.537130+00:00,mongodb+pymongo-driver,Q_driver_roundtrip_ping,0.093219,0.007708,10

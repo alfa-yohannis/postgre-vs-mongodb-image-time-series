@@ -1,0 +1,5 @@
+timestamp,engine,query_id,mean_latency_ms,std_latency_ms,n_runs
+2026-04-07T15:24:20.593114+00:00,postgres+psycopg2-driver,Q_driver_roundtrip_select_1,0.056687,0.004857,10
+2026-04-07T15:27:08.913766+00:00,postgres+psycopg2-driver,Q_driver_roundtrip_select_1,0.048327,0.010061,10
+2026-04-07T15:31:56.912358+00:00,postgres+psycopg2-driver,Q_driver_roundtrip_select_1,0.058387,0.003373,10
+2026-04-07T15:42:14.180110+00:00,postgres+psycopg2-driver,Q_driver_roundtrip_select_1,0.048626,0.003205,10

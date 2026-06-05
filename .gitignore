@@ -325,7 +325,6 @@ TSWLatexianTemp*
 # Uncomment the next line to have this generated file ignored.
 #*Notes.bib
 paper/icct_alfa_yohannis_2.pdf
-*.csv
 code/restored_frame_postgre.jpg
 code/restored_frame_mongo.jpg
 **/__pycache__
@@ -343,4 +342,3 @@ postgre-vs-mongodb-carbon-footprint/paper/alfa_yohannis_3.docx
 postgre-vs-postgre-minio-carbon-footprint/paper/alfa_yohannis_4.docx
 alfa_yohannis_4.docx
 alfa_yohannis_3.docx
-01_environment_systems_and_decisions/figures
