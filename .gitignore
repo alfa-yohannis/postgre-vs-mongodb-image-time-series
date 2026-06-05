@@ -337,4 +337,9 @@ paper/*.pdf
 postgre-vs-mongodb-carbon-footprint/code/script.pid
 .codex
 postgre-vs-postgre-minio-image-time-series/code/all_summaries.txt
-review_results_2
+review_results_*/*.pdf
+conference-template-a4.docx
+postgre-vs-mongodb-carbon-footprint/paper/alfa_yohannis_3.docx
+postgre-vs-postgre-minio-carbon-footprint/paper/alfa_yohannis_4.docx
+alfa_yohannis_4.docx
+alfa_yohannis_3.docx
