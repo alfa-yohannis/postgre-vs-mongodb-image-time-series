@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"exit $? | pages $\\(pdfinfo main.pdf)",
+      "Bash(grep -iA1 \"^Funding\")",
+      "WebFetch(domain:www.springeropen.com)",
+      "WebFetch(domain:www.springer.com)",
+      "Bash(grep -iA2 \"Statements and Declarations\")"
+    ]
+  }
+}
