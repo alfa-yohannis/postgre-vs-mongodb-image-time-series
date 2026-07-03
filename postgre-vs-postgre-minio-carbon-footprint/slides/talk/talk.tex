@@ -1,0 +1,255 @@
+\documentclass[aspectratio=169, table]{beamer}
+
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{adjustbox}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit}
+
+\makeatletter
+\def\input@path{{../theme/}}
+\makeatother
+\graphicspath{{../theme/}{../../paper/figures/}}
+\usetheme{Pradita}
+
+\newcommand{\sectionframe}[1]{%
+  \begin{frame}{\hfill}\centering\Huge{\textbf{#1}}\end{frame}}
+\newcommand{\takeaway}[1]{\vspace{3pt}{\footnotesize #1}}
+\newcommand{\best}[1]{\textbf{\color{praditagreen}#1}}
+\newenvironment{fittable}[1][0.66]
+  {\begin{center}\arrayrulecolor{black}\footnotesize
+   \begin{adjustbox}{max width=\linewidth,max totalheight=#1\textheight}}
+  {\end{adjustbox}\end{center}}
+
+% RQ callout: green border, no shadow (tcolorbox has no shadow by default)
+\newtcolorbox{rqbox}{colframe=praditagreen, colback=praditagreen!6,
+  boxrule=0.6pt, arc=1mm, left=2mm, right=2mm, top=1mm, bottom=1mm,
+  title=Research question, fonttitle=\footnotesize\bfseries,
+  coltitle=white, colbacktitle=praditagreen, before skip=3pt, after skip=3pt}
+
+\title{Carbon Footprint of Relational\\[1pt]
+  \& Hybrid Object-Relational\\[1pt]
+  Storage for Image-Based\\[1pt]
+  Time-Series Workloads\\[1pt]
+}
+\subtitle{The 10th International Conference on Applying New 
+Technology in Green Buildings $\cdot$ ATiGB 2026}
+\author{\textbf{Alfa Yohannis}, A.\ Waworuntu, E.\ Siregar, A.\ Sanjaya, R.\ Avrianto}
+\date{Da Nang, Vietnam $\cdot$ 10--11 July 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}{Contents}
+  \vspace{12pt}
+  \begin{columns}[t]
+    \column{0.5\textwidth}\tableofcontents[sections={1-2}]
+    \column{0.5\textwidth}\tableofcontents[sections={3-4}]
+  \end{columns}
+\end{frame}
+
+% ============================================================
+\section{Motivation}
+\sectionframe{Motivation}
+
+\begin{frame}{A carbon-aware choice}
+  \vspace{2pt}\footnotesize
+  \begin{itemize}\setlength{\itemsep}{3pt}
+    \item Smart buildings store IoT (Internet of Things) camera images with timestamps; the data tier runs \textbf{24/7}, so its energy is operational carbon.
+    \item Two common ways to store the image on PostgreSQL/TimescaleDB:
+      \begin{itemize}\footnotesize
+        \item \textbf{PG} --- image \emph{inline} in a \texttt{BYTEA} column (via TOAST, The Oversized-Attribute Storage Technique).
+        \item \textbf{PM} --- image \emph{externalised} to MinIO object storage; PostgreSQL keeps only metadata $+$ a key.
+      \end{itemize}
+    \item Time-series benchmarks use tiny numeric payloads and report no energy.
+  \end{itemize}
+  \vspace{2pt}
+  \begin{rqbox}\footnotesize
+    What are the performance and carbon trade-offs of inline \textbf{PG} vs.\ externalised \textbf{PM} storage across image resolutions?
+  \end{rqbox}
+  \takeaway{Inline simplicity vs.\ externalised object transport --- which is greener, and when?}
+\end{frame}
+
+% ============================================================
+\section{Approach \& Setup}
+\sectionframe{Approach \& Setup}
+\begin{frame}{Two architectures}
+  \vspace{20pt}\footnotesize
+
+  \centering
+  \begin{adjustbox}{scale=1.2}
+    \begin{tikzpicture}[font=\scriptsize, node distance=2.4mm,
+        hd/.style={rounded corners=1mm, align=center, minimum width=37mm, minimum height=7mm, font=\scriptsize\bfseries, text=white},
+        box/.style={draw, rounded corners=1mm, align=center, minimum width=37mm, minimum height=9mm},
+        meta/.style={box, fill=gray!12}]
+      \node[hd, fill=blueColor] (pgh) {PostgreSQL BYTEA (PG)};
+      \node[meta, below=of pgh] (pgm) {one row:\\ metadata};
+      \node[box, fill=blueColor!16, draw=blueColor, below=of pgm] (byt) {image inline\\ (BYTEA)};
+      \draw[-Latex] (pgm)--(byt);
+      \node[hd, fill=praditagreen, right=8mm of pgh] (pmh) {PostgreSQL$+$MinIO (PM)};
+      \node[meta, below=of pmh] (pmm) {PostgreSQL:\\ metadata $+$ key};
+      \node[box, fill=praditagreen!16, draw=praditagreen, below=of pmm] (obj) {MinIO: image\\ object (HTTP)};
+      \draw[-Latex] (pmm)--(obj);
+    \end{tikzpicture}
+  \end{adjustbox}
+
+  \takeaway{Same data, same queries --- only \emph{where the image lives} differs.}
+
+  \begin{columns}[T]    
+    \column{0.5\textwidth}\centering
+    \begin{itemize}\setlength{\itemsep}{3pt}
+      \item \textbf{Identical workload}
+      \item 7 resolutions: \textbf{360p--5K} (quality-90 JPEG [Joint Photographic Experts Group], 0.09--5.09~MB).
+      \item 2{,}000 rows, batches of 50, \textbf{5 insert runs}.
+    \end{itemize}
+
+    \column{0.5\textwidth}    
+    \begin{itemize}\setlength{\itemsep}{3pt}
+      \item \textbf{Latest-payload point read} $+$ driver round-trip overhead.
+      \item PM writes the object to MinIO with an HTTP (Hypertext Transfer Protocol) PUT and reads it with a GET.
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Measurement environment}
+  \vspace{2pt}\footnotesize
+  \begin{columns}[t]
+    \column{0.54\textwidth}
+    \begin{itemize}\setlength{\itemsep}{2.5pt}
+      \item Single host: \textbf{Intel Core i9-11900H}, 31~GB random-access memory (RAM), 1.9~TB NVMe (Non-Volatile Memory Express) solid-state drive.
+      \item \textbf{Intel RAPL} (Running Average Power Limit) counters (central processing unit [CPU] $+$ memory) through \textbf{CodeCarbon}.
+      \item Indonesia grid $\approx$\,\textbf{0.676}~kg~CO\textsubscript{2}-equivalent (CO\textsubscript{2}eq) per kilowatt-hour.
+      \item Per-profile carbon: constant power-rate estimate; \textbf{whole-phase totals measured}.
+    \end{itemize}
+    \column{0.46\textwidth}
+    \begin{fittable}[0.58]
+    \begin{tabular}{ll}\toprule
+      \textbf{Component} & \textbf{Version} \\\midrule
+      OS         & Ubuntu 24.04.4 LTS \\
+      Docker     & 29.4 / Compose v5.1.1 \\
+      PostgreSQL & 15 + TimescaleDB \\
+      MinIO      & latest \\
+      Python     & 3.14.3 \\
+      CodeCarbon & 3.2.6 \\\bottomrule
+    \end{tabular}\end{fittable}
+    \centering{\scriptsize Software stack}
+  \end{columns}
+  \takeaway{Hardware-level energy; identical conditions for both architectures.}
+\end{frame}
+
+% ============================================================
+\section{Results}
+\sectionframe{Results}
+
+\begin{frame}{Performance summary}
+  \vspace{2pt}
+  \begin{fittable}[0.66]
+  \begin{tabular}{l rr rr rr}\toprule
+   & \multicolumn{2}{c}{\textbf{Insert (rows/s)}} & \multicolumn{2}{c}{\textbf{Point read (ms)}} & \multicolumn{2}{c}{\textbf{Storage amp.}} \\
+  \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+  \textbf{Res.} & \textbf{PG} & \textbf{PM} & \textbf{PG} & \textbf{PM} & \textbf{PG} & \textbf{PM} \\\midrule
+  360p  & \best{738.3} & 104.1 & \best{0.72} & 1.72 & 1.045 & \best{1.003} \\
+  480p  & \best{475.8} & 56.9  & \best{1.02} & 1.16 & 1.044 & \best{1.002} \\
+  720p  & \best{205.1} & 51.7  & 2.59 & \best{1.77} & 1.039 & \best{1.001} \\
+  1080p & \best{91.9}  & 39.0  & 3.64 & \best{2.35} & 1.039 & \best{1.000} \\
+  1440p & \best{50.5}  & 35.5  & 7.91 & \best{2.28} & 1.039 & \best{1.000} \\
+  4K    & 23.0 & \best{28.5}  & 14.94 & \best{2.46} & 1.038 & \best{1.000} \\
+  5K    & 13.2 & \best{15.6}  & 27.32 & \best{3.36} & 1.038 & \best{1.000} \\
+  \bottomrule\end{tabular}\end{fittable}
+  \takeaway{Insert: PG faster $\le$1440p, PM from 4K. Point read: PM from 720p (up to \textbf{8$\times$} at 5K). PM storage stays $\approx$1.00$\times$.}
+\end{frame}
+
+\begin{frame}{}
+  \centering\vspace{1mm}
+  \includegraphics[width=\linewidth,height=0.8\textheight,keepaspectratio]{boxplot_insert_throughput.pdf}\\
+  \takeaway{Inline \texttt{BYTEA} (PG) leads up to 1440p (up to $\sim$8$\times$ at 360p); the hybrid (PM) overtakes at 4K--5K.}
+\end{frame}
+
+\begin{frame}{}
+  \centering\vspace{1mm}
+  \includegraphics[width=\linewidth,height=0.8\textheight,keepaspectratio]{boxplot_retrieval_latency.pdf}\\
+  \takeaway{PG is faster only at 360p--480p; from 720p, MinIO's direct streaming wins, reaching $\sim$8$\times$ at 5K.}
+\end{frame}
+
+\begin{frame}{Carbon estimates}
+  \vspace{2pt}
+  \begin{fittable}[0.58]
+  \begin{tabular}{l rr rr rr rr rr}\toprule
+  \textbf{Res.}
+    & \multicolumn{2}{c}{\textbf{Duration (s)}}
+    & \multicolumn{2}{c}{\textbf{Energy (µWh)}}
+    & \multicolumn{2}{c}{\textbf{CPU (µWh)}}
+    & \multicolumn{2}{c}{\textbf{RAM (µWh)}}
+    & \multicolumn{2}{c}{\textbf{Emis. (mg)}} \\
+  \cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}
+   & PG & PM & PG & PM & PG & PM & PG & PM & PG & PM \\\midrule
+  360p  & 17  & 104 & 218   & 979  & 123  & 404  & 96   & 575  & \best{148}  & 662  \\
+  480p  & 27  & 184 & 347   & 1738 & 194  & 717  & 152  & 1022 & \best{234}  & 1175 \\
+  720p  & 62  & 202 & 788   & 1913 & 442  & 789  & 346  & 1124 & \best{533}  & 1293 \\
+  1080p & 142 & 274 & 1791  & 2589 & 1004 & 1068 & 787  & 1521 & \best{1210} & 1750 \\
+  1440p & 254 & 301 & 3216  & 2848 & 1803 & 1174 & 1413 & 1673 & 2174 & \best{1925} \\
+  4K    & 565 & 372 & 7140  & 3515 & 4004 & 1450 & 3137 & 2065 & 4826 & \best{2376} \\
+  5K    & 993 & 671 & 12558 & 6345 & 7042 & 2617 & 5517 & 3728 & 8489 & \best{4289} \\
+  \bottomrule\end{tabular}\end{fittable}
+  \takeaway{Measured whole phase: PM \best{14{,}483} vs.\ PG 19{,}825~mg~CO\textsubscript{2}eq --- a \textbf{26.9\% reduction}; per-profile crossover at 1440p (green $=$ greener).}
+\end{frame}
+
+\begin{frame}{}
+  \centering\vspace{1mm}
+  \includegraphics[height=0.8\textheight,keepaspectratio]{carbon_footprint.pdf}\\
+  \takeaway{PM emits more at small profiles (fixed PUT cost) but less from 1440p up --- roughly halving carbon at 4K--5K.}
+\end{frame}
+
+\begin{frame}{}
+  \centering\vspace{1mm}
+  \includegraphics[width=\linewidth,height=0.8\textheight,keepaspectratio]{carbon_breakdown.pdf}\\
+  \takeaway{The carbon crossover tracks the end-to-end time crossover: externalising the payload cuts CPU$+$RAM energy at high resolution.}
+\end{frame}
+
+% ============================================================
+\section{Discussion \& Conclusion}
+\sectionframe{Discussion \& Conclusion}
+
+\begin{frame}{Why the crossovers}
+  \vspace{2pt}\footnotesize
+  \begin{columns}[t]
+    \column{0.5\textwidth}\textbf{Mechanism}
+    \begin{itemize}\setlength{\itemsep}{2pt}
+      \item \textbf{PG wins small writes:} batched inserts avoid a per-object request; PM pays a fixed MinIO PUT.
+      \item \textbf{PM wins large payloads:} PostgreSQL still logs big \texttt{BYTEA} through its Write-Ahead Log (WAL); MinIO streams the object directly.
+      \item PM keeps storage at $\approx$1.00$\times$ (vs.\ PG's 1.04$\times$).
+    \end{itemize}
+    \column{0.5\textwidth}\textbf{Guidelines}
+    \begin{itemize}\setlength{\itemsep}{2pt}
+      \item 360p--1080p ingest-heavy: \best{PG} (2--8$\times$ faster writes).
+      \item 1440p mixed: it depends --- PM cuts reads $3.5\times$ and carbon.
+      \item 4K--5K / read-heavy: \best{PM} ($\sim$6--8$\times$ faster reads, $\approx$half the carbon).
+      \item Operational simplicity: PG $=$ one transactional boundary.
+    \end{itemize}
+  \end{columns}
+  \takeaway{Crossover points, not a universal winner.}
+\end{frame}
+
+\begin{frame}{Conclusion}
+  \vspace{2pt}\footnotesize
+  \begin{itemize}\setlength{\itemsep}{3pt}
+    \item \textbf{RQ answer:} whole-phase, PM emits \best{14{,}483} vs.\ PG 19{,}825~mg~CO\textsubscript{2}eq --- a \textbf{26.9\% reduction}.
+    \item Crossovers: PG writes faster $\le$1440p; PM reads faster from 720p and is greener from 1440p.
+    \item PM keeps $\approx$1.00$\times$ storage amplification and scales its Write-Ahead Log with metadata, not payload.
+    \item \textbf{Threats:} single host; per-profile carbon is a constant-power-rate estimate; 2{,}000 rows.
+    \item \textbf{Future work:} multi-node / higher concurrency; PostgreSQL Large Objects (LO) as a third architecture.
+  \end{itemize}
+  \takeaway{Inline for small ingest; externalised object storage for large, read-heavy, carbon-sensitive tiers.}
+\end{frame}
+
+\begin{frame}{\hfill}
+  \centering
+  \Huge{\textbf{Thank you}}\\[8pt]
+  \normalsize Questions \& discussion
+\end{frame}
+
+\end{document}

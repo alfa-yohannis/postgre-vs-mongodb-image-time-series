@@ -1,0 +1,44 @@
+%% Store the total number of pages
+%\newcounter{totalpages}
+%\AtBeginDocument{\setcounter{totalpages}{\numexpr\getpagerefnumber{\thepage}+1\relax}}
+
+
+\mode<presentation>
+
+\setbeamertemplate{background}{
+	\begin{tikzpicture}
+		\useasboundingbox (0,0) rectangle(\the\paperwidth,\the\paperheight);
+		\fill[color=praditagreen] (0,0) rectangle(10.05,1.15);
+		\fill[color=blue!50!cyan!80] (10.05,0) rectangle(\the\paperwidth,10);
+		\node at (13,5) {\includegraphics[width=6cm, height=10cm]{../theme/classFiles/building}};
+		\node at (2,8) {\includegraphics[width=75.9375pt, height=32.625pt]{../theme/classFiles/logo_universitas}};
+		\ifnum\thepage>1\relax%
+		\fill[white,opacity=1] (0,0) rectangle(\the\paperwidth,\the\paperheight);
+		\fi
+	\end{tikzpicture}
+}
+
+% Title page
+\defbeamertemplate*{title page}{Pradita}[1][]
+{%
+  % four elements pinned at absolute positions (no shifting, independent of text length)
+  \begin{tikzpicture}[remember picture, overlay,
+      every node/.style={anchor=north west, text width=8.9cm, align=left, inner sep=0pt}]
+    \node at ([shift={(0.95cm,-2.25cm)}]current page.north west)%
+      {\usebeamercolor[fg]{subtitle page header}\usebeamerfont{subtitle}\insertsubtitle};
+    \node at ([shift={(0.95cm,-3.60cm)}]current page.north west)%
+      {\usebeamercolor[fg]{title page header}\usebeamerfont{title}\LARGE\textbf{\inserttitle}};
+    \node at ([shift={(0.95cm,-7.4cm)}]current page.north west)%
+      {\color{black}\usebeamerfont{author}\insertdate};
+    \node at ([shift={(0.95cm,-8.3cm)}]current page.north west)%
+      {\color{white}\scriptsize\bfseries\insertauthor};
+  \end{tikzpicture}%
+}
+
+% Items
+\setbeamertemplate{items}[square]
+\setbeamertemplate{sections/subsections in toc}[square]
+
+\mode
+<all>
+
