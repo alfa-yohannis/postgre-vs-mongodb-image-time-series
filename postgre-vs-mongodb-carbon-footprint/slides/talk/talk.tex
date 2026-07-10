@@ -234,7 +234,7 @@ Technology in Green Buildings $\cdot$ ATiGB 2026}
   \centering
   \vspace{1mm}
   \includegraphics[height=.8\textheight,keepaspectratio]{carbon_breakdown.pdf}\\
-  \takeaway{CPU $\approx$57\% of energy in both; above 1440p MongoDB exceeds PostgreSQL on every component --- inline BSON serialization $+$ cache pressure as the 5K set nears the 30~GB cache.}
+  \takeaway{CPU $\approx$57\% of energy in both; above 1440p MongoDB exceeds PostgreSQL on every component --- driven by inline BSON serialization of multi-MB payloads.}
 \end{frame}
 
 % ============================================================
@@ -248,7 +248,7 @@ Technology in Green Buildings $\cdot$ ATiGB 2026}
     \column{0.5\textwidth}
     \textbf{Mechanism}
     \begin{itemize}\setlength{\itemsep}{2pt}
-      \item \textbf{MongoDB $\uparrow$ at high-res:} multi-MB BSON written inline through B-tree pages; Snappy defeated by JPEG (amp $0.10\times\!\to\!3.0\times$); at 5K the $\sim$29.8~GB set nears the 30~GB cache $\to$ eviction stalls.
+      \item \textbf{MongoDB $\uparrow$ at high-res:} multi-MB BSON written inline through B-tree pages; Snappy defeated by JPEG (amp $0.10\times\!\to\!3.0\times$).
       \item \textbf{PostgreSQL efficient:} TOAST out-of-line keeps a compact, resolution-independent write path (flat $1.04\times$).
     \end{itemize}
     \column{0.5\textwidth}
