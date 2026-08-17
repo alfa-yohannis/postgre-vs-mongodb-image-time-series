@@ -1,0 +1,24 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Camera wall (launcher)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase/launcher.py",
+      "python": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase/.venv/bin/python",
+      "cwd": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Record all cameras (10 min)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase/record.py",
+      "python": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase/.venv/bin/python",
+      "args": ["--all", "--minutes", "10", "--fps", "5"],
+      "cwd": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase",
+      "console": "integratedTerminal"
+    }
+  ]
+}

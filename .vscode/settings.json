@@ -1,0 +1,7 @@
+{
+  // The camera app's virtual environment. This path changed when code2 was
+  // renamed to code_realcase; a stale setting here causes
+  // "No such file or directory" when running any of its scripts.
+  "python.defaultInterpreterPath": "${workspaceFolder}/01_environment_systems_and_decisions/code_realcase/.venv/bin/python",
+  "python.terminal.activateEnvironment": true
+}
